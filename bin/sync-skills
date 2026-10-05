@@ -1,0 +1,1010 @@
+#!/usr/bin/env bash
+
+# Interactive manager for skill symlinks across known harness skill directories.
+# Bash 3.2-compatible: macOS still ships an old bash.
+#
+# The render and refresh paths are deliberately fork-free. Every `tput`,
+# `dirname`, `basename` or $(...) there costs a process, and with ~50 skills
+# across ~7 harness directories that added up to ~100ms per frame and ~1.5s per
+# toggle. Frames are now built as one string of inline escapes and written with
+# a single printf, helpers return through globals instead of subshells, symlink
+# targets are read one batch per directory. A full read-handle-draw cycle costs
+# ~6ms, so keystrokes need no debouncing at all.
+
+SOURCE_DIR=
+AGENTS_SKILLS_DIR=
+CLAUDE_SKILLS_DIR=
+warning_text=
+current_row=1
+top_row=0
+terminal_lines=24
+terminal_cols=80
+size_dirty=1
+resize_pending=0
+drawing=0
+original_stty=
+active_section=agents
+sort_mode=vendor
+source_real=
+
+row_kind=()
+row_section=()
+row_name=()
+row_state=()
+row_source=()
+row_origin=()
+source_names=()
+source_origin=()
+section_ids=()
+section_titles=()
+section_dirs=()
+section_first_row=()
+section_row_count=()
+realdir_keys=()
+realdir_vals=()
+
+CSI=$'\e['
+ANSI_REV=$'\e[7m'
+ANSI_DIM=$'\e[2m'
+ANSI_RESET=$'\e[0m'
+ANSI_EL=$'\e[K'
+ANSI_ED=$'\e[J'
+# The live sort mode is appended to this.
+FOOTER_TEXT='q/Enter: quit j/k ↑↓: move Space: toggle a: all n: none ←/→: tab s: sort='
+
+
+init_paths() {
+  local script_dir repo_root claude_config
+  script_dir=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)
+  repo_root=$(cd "$script_dir/.." && pwd)
+
+  SOURCE_DIR=${SYNC_SKILLS_SOURCE_DIR:-"$repo_root/skills"}
+  AGENTS_SKILLS_DIR=${SYNC_SKILLS_AGENTS_SKILLS_DIR:-"$HOME/.agents/skills"}
+  claude_config=${CLAUDE_CONFIG_DIR:-"$HOME/.claude"}
+  CLAUDE_SKILLS_DIR=${SYNC_SKILLS_CLAUDE_SKILLS_DIR:-"$claude_config/skills"}
+}
+
+add_section() {
+  section_ids[${#section_ids[@]}]=$1
+  section_titles[${#section_titles[@]}]=$2
+  section_dirs[${#section_dirs[@]}]=$3
+}
+
+
+add_harness_section() {
+  [ -d "$3" ] || [ -d "$4" ] || return 0
+  add_section "$1" "$2" "$4"
+}
+
+init_sections() {
+  local agents_config claude_config
+  agents_config=${AGENTS_SKILLS_DIR%/*}
+  claude_config=${CLAUDE_CONFIG_DIR:-"$HOME/.claude"}
+  section_ids=()
+  section_titles=()
+  section_dirs=()
+  add_harness_section agents '.agents/skills' "$agents_config" "$AGENTS_SKILLS_DIR"
+  add_harness_section claude '.claude/skills' "$claude_config" "$CLAUDE_SKILLS_DIR"
+  add_harness_section gemini '.gemini/skills' "$HOME/.gemini" "$HOME/.gemini/skills"
+  add_harness_section opencode '.opencode/skills' "$HOME/.opencode" "$HOME/.opencode/skills"
+  add_harness_section pi '.pi/skills' "$HOME/.pi" "$HOME/.pi/skills"
+  add_harness_section omp '.omp/skills' "$HOME/.omp" "$HOME/.omp/skills"
+  add_harness_section codex '.codex/skills' "$HOME/.codex" "$HOME/.codex/skills"
+  return 0
+}
+
+# Sections resolve by linear scan over a handful of ids; results come back in
+# SECTION_IDX / SECTION_DIR / SECTION_TITLE so callers avoid a subshell.
+_section_index() {
+  local wanted=$1 i
+  i=0
+  while [ $i -lt ${#section_ids[@]} ]; do
+    if [ "${section_ids[$i]}" = "$wanted" ]; then
+      SECTION_IDX=$i
+      return 0
+    fi
+    i=$((i + 1))
+  done
+  SECTION_IDX=-1
+  return 1
+}
+
+_section_dir() {
+  _section_index "$1" || return 1
+  SECTION_DIR=${section_dirs[$SECTION_IDX]}
+}
+
+_section_title() {
+  _section_index "$1" || return 1
+  SECTION_TITLE=${section_titles[$SECTION_IDX]}
+}
+
+# Symlink-resolved directory paths, memoised per refresh: one `cd -P` per
+# distinct parent instead of one per entry.
+_realdir() {
+  local wanted=$1 i resolved
+  i=0
+  while [ $i -lt ${#realdir_keys[@]} ]; do
+    if [ "${realdir_keys[$i]}" = "$wanted" ]; then
+      REALDIR=${realdir_vals[$i]}
+      return 0
+    fi
+    i=$((i + 1))
+  done
+  if [ -d "$wanted" ]; then
+    resolved=$(cd -P "$wanted" 2>/dev/null && pwd)
+    [ -n "$resolved" ] || resolved=$wanted
+  else
+    resolved=$wanted
+  fi
+  realdir_keys[${#realdir_keys[@]}]=$wanted
+  realdir_vals[${#realdir_vals[@]}]=$resolved
+  REALDIR=$resolved
+  return 0
+}
+
+_canonical_parent_path() {
+  local path=$1 parent base
+  base=${path##*/}
+  case "$path" in
+    */*)
+      parent=${path%/*}
+      [ -n "$parent" ] || parent=/
+      ;;
+    *) parent=. ;;
+  esac
+  _realdir "$parent"
+  case "$REALDIR" in
+    */) CANON=$REALDIR$base ;;
+    *) CANON=$REALDIR/$base ;;
+  esac
+  return 0
+}
+
+_link_target_path() {
+  local link=$1 target
+  target=$(readlink "$link") || return 1
+  [ -n "$target" ] || return 1
+  case "$target" in
+    /*) _canonical_parent_path "$target" ;;
+    *) _canonical_parent_path "${link%/*}/$target" ;;
+  esac
+}
+
+reset_rows() {
+  row_kind=()
+  row_section=()
+  row_name=()
+  row_state=()
+  row_source=()
+  row_origin=()
+}
+
+add_row() {
+  row_kind[${#row_kind[@]}]=$1
+  row_section[${#row_section[@]}]=$2
+  row_name[${#row_name[@]}]=$3
+  row_state[${#row_state[@]}]=$4
+  row_source[${#row_source[@]}]=$5
+  row_origin[${#row_origin[@]}]=${6:-}
+}
+
+# Resolves every symlink in one readlink call; targets land in BATCH_TARGETS,
+# index-aligned with the arguments.
+_batch_readlink() {
+  local out rest line path
+  BATCH_TARGETS=()
+  [ $# -gt 0 ] || return 0
+  out=$(readlink -- "$@" 2>/dev/null) || out=
+  rest=$out
+  while [ -n "$rest" ]; do
+    line=${rest%%$'\n'*}
+    if [ "$line" = "$rest" ]; then
+      rest=
+    else
+      rest=${rest#*$'\n'}
+    fi
+    BATCH_TARGETS[${#BATCH_TARGETS[@]}]=$line
+  done
+  if [ ${#BATCH_TARGETS[@]} -ne $# ]; then
+    # Batch output did not line up (e.g. a newline inside a target).
+    BATCH_TARGETS=()
+    for path in "$@"; do
+      BATCH_TARGETS[${#BATCH_TARGETS[@]}]=$(readlink "$path" 2>/dev/null || printf '')
+    done
+  fi
+  return 0
+}
+
+# Glob output is already collation-sorted, so no sort(1) and no basename(1).
+# A vendored skill is a symlink into vendor/<repo>/, and that repo name is shown
+# as a prefix in the list; skills owned by this repo have no prefix.
+load_source_names() {
+  local path name i origin slots link_paths
+  source_names=()
+  source_origin=()
+  [ -d "$SOURCE_DIR" ] || return 0
+  slots=()
+  link_paths=()
+  for path in "$SOURCE_DIR"/*; do
+    [ -d "$path" ] || continue
+    name=${path##*/}
+    source_names[${#source_names[@]}]=$name
+    if [ -L "$path" ]; then
+      slots[${#slots[@]}]=$((${#source_names[@]} - 1))
+      link_paths[${#link_paths[@]}]=$path
+    fi
+  done
+
+  [ ${#link_paths[@]} -gt 0 ] || return 0
+  _batch_readlink "${link_paths[@]}"
+  i=0
+  while [ $i -lt ${#slots[@]} ]; do
+    origin=${BATCH_TARGETS[$i]:-}
+    case "$origin" in
+      */vendor/*) origin=${origin#*/vendor/} ;;
+      vendor/*) origin=${origin#vendor/} ;;
+      *) origin= ;;
+    esac
+    source_origin[${slots[$i]}]=${origin%%/*}
+    i=$((i + 1))
+  done
+  return 0
+}
+
+is_source_skill() {
+  local wanted=$1 name
+  for name in ${source_names[@]+"${source_names[@]}"}; do
+    [ "$name" = "$wanted" ] && return 0
+  done
+  return 1
+}
+
+# kind: l (symlink), e (exists, not a link), empty (absent).
+# target: canonical path the symlink resolves to, if any.
+_compute_state() {
+  local kind=$1 target=$2 has_source=$3 name=$4 source_path
+  source_path=$source_real/$name
+  case "$kind" in
+    l)
+      if [ -z "$target" ] || [ ! -e "$target" ]; then
+        if [ -n "$target" ] && [ "$target" = "$source_path" ]; then
+          STATE=stale
+          STATE_SOURCE=0
+        else
+          STATE=dangling
+          STATE_SOURCE=$has_source
+        fi
+      elif [ "$has_source" -eq 1 ]; then
+        if [ "$target" = "$source_path" ]; then
+          STATE=enabled
+          STATE_SOURCE=1
+        else
+          STATE=foreign
+          STATE_SOURCE=1
+        fi
+      else
+        STATE=readonly
+        STATE_SOURCE=0
+      fi
+      ;;
+    e)
+      STATE=readonly
+      STATE_SOURCE=$has_source
+      ;;
+    *)
+      if [ "$has_source" -eq 1 ]; then
+        STATE=missing
+        STATE_SOURCE=1
+      else
+        STATE=readonly
+        STATE_SOURCE=0
+      fi
+      ;;
+  esac
+  return 0
+}
+
+# Rows of a section are contiguous, which keeps lookups and scrolling O(visible).
+add_section_rows() {
+  local idx=$1 section dir path name origin first
+  local i j src_count dest_count kind target count vendor
+  local dest_names dest_kind dest_target link_paths link_slots
+  local it_name it_state it_source it_origin order
+
+  section=${section_ids[$idx]}
+  dir=${section_dirs[$idx]}
+  add_row header "$section" '' '' 0
+
+  dest_names=()
+  dest_kind=()
+  dest_target=()
+  link_paths=()
+  link_slots=()
+
+  if [ -d "$dir" ]; then
+    for path in "$dir"/*; do
+      [ -e "$path" ] || [ -L "$path" ] || continue
+      name=${path##*/}
+      dest_names[${#dest_names[@]}]=$name
+      if [ -L "$path" ]; then
+        dest_kind[${#dest_kind[@]}]=l
+        link_slots[${#link_slots[@]}]=$((${#dest_names[@]} - 1))
+        link_paths[${#link_paths[@]}]=$path
+      else
+        dest_kind[${#dest_kind[@]}]=e
+      fi
+    done
+  fi
+
+  # One readlink for the whole directory instead of one per symlink.
+  if [ ${#link_paths[@]} -gt 0 ]; then
+    _batch_readlink "${link_paths[@]}"
+    i=0
+    while [ $i -lt ${#link_slots[@]} ]; do
+      target=${BATCH_TARGETS[$i]:-}
+      if [ -n "$target" ]; then
+        case "$target" in
+          /*) _canonical_parent_path "$target" ;;
+          *) _canonical_parent_path "$dir/$target" ;;
+        esac
+        dest_target[${link_slots[$i]}]=$CANON
+      fi
+      i=$((i + 1))
+    done
+  fi
+
+  # Merge the two already-sorted name lists; the merge also tells us whether a
+  # name is backed by a source skill, so no per-row membership scan is needed.
+  first=${#row_kind[@]}
+  section_first_row[$idx]=$first
+  src_count=${#source_names[@]}
+  dest_count=${#dest_names[@]}
+  it_name=()
+  it_state=()
+  it_source=()
+  it_origin=()
+  i=0
+  j=0
+  while [ $i -lt $src_count ] || [ $j -lt $dest_count ]; do
+    if [ $j -ge $dest_count ]; then
+      name=${source_names[$i]}
+      STATE_HAS_SOURCE=1
+      origin=${source_origin[$i]:-}
+      kind=
+      target=
+      i=$((i + 1))
+    elif [ $i -ge $src_count ]; then
+      name=${dest_names[$j]}
+      STATE_HAS_SOURCE=0
+      origin=
+      kind=${dest_kind[$j]}
+      target=${dest_target[$j]:-}
+      j=$((j + 1))
+    elif [ "${source_names[$i]}" = "${dest_names[$j]}" ]; then
+      name=${source_names[$i]}
+      STATE_HAS_SOURCE=1
+      origin=${source_origin[$i]:-}
+      kind=${dest_kind[$j]}
+      target=${dest_target[$j]:-}
+      i=$((i + 1))
+      j=$((j + 1))
+    elif [[ "${source_names[$i]}" < "${dest_names[$j]}" ]]; then
+      name=${source_names[$i]}
+      STATE_HAS_SOURCE=1
+      origin=${source_origin[$i]:-}
+      kind=
+      target=
+      i=$((i + 1))
+    else
+      name=${dest_names[$j]}
+      STATE_HAS_SOURCE=0
+      origin=
+      kind=${dest_kind[$j]}
+      target=${dest_target[$j]:-}
+      j=$((j + 1))
+    fi
+
+    _compute_state "$kind" "$target" "$STATE_HAS_SOURCE" "$name"
+    case "$STATE" in
+      foreign|dangling) warning_text='Warning: unexpected state found; foreign or dangling symlinks are read-only.' ;;
+    esac
+    it_name[${#it_name[@]}]=$name
+    it_state[${#it_state[@]}]=$STATE
+    it_source[${#it_source[@]}]=$STATE_SOURCE
+    it_origin[${#it_origin[@]}]=$origin
+  done
+
+  # Items come out of the merge in name order. Sorting by vendor is then just a
+  # stable bucket pass over them: own skills first, then one bucket per vendor.
+  count=${#it_name[@]}
+  order=()
+  i=0
+  if [ "$sort_mode" = vendor ]; then
+    while [ $i -lt $count ]; do
+      [ -n "${it_origin[$i]}" ] || order[${#order[@]}]=$i
+      i=$((i + 1))
+    done
+    while IFS= read -r vendor; do
+      [ -n "$vendor" ] || continue
+      i=0
+      while [ $i -lt $count ]; do
+        [ "${it_origin[$i]}" = "$vendor" ] && order[${#order[@]}]=$i
+        i=$((i + 1))
+      done
+    done < <(printf '%s\n' ${it_origin[@]+"${it_origin[@]}"} | sort -u)
+  else
+    while [ $i -lt $count ]; do
+      order[${#order[@]}]=$i
+      i=$((i + 1))
+    done
+  fi
+  for i in ${order[@]+"${order[@]}"}; do
+    add_row item "$section" "${it_name[$i]}" "${it_state[$i]}" "${it_source[$i]}" "${it_origin[$i]}"
+  done
+
+  section_row_count[$idx]=$((${#row_kind[@]} - first))
+  return 0
+}
+
+refresh_state() {
+  local old_section old_name idx
+  old_section=
+  old_name=
+  if [ ${#row_kind[@]} -gt 0 ] && [ "${row_kind[$current_row]}" = item ]; then
+    old_section=${row_section[$current_row]}
+    old_name=${row_name[$current_row]}
+  fi
+
+  init_sections
+  if ! _section_index "$active_section"; then
+    if [ ${#section_ids[@]} -gt 0 ]; then
+      active_section=${section_ids[0]}
+    fi
+  fi
+
+  warning_text=
+  realdir_keys=()
+  realdir_vals=()
+  section_first_row=()
+  section_row_count=()
+  reset_rows
+  load_source_names
+  _realdir "$SOURCE_DIR"
+  source_real=$REALDIR
+
+  idx=0
+  while [ $idx -lt ${#section_ids[@]} ]; do
+    add_section_rows "$idx"
+    idx=$((idx + 1))
+  done
+
+  size_dirty=1
+  if [ -n "$old_section" ] && [ -n "$old_name" ] && _section_index "$old_section"; then
+    focus_item "$old_section" "$old_name" || focus_first_item
+  else
+    focus_first_item
+  fi
+  return 0
+}
+
+# Re-stat a single row after a toggle; a full refresh_state is not needed
+# because enabling or disabling one link cannot change any other row.
+refresh_row() {
+  local idx=$1 name entry kind target has_source
+  [ ${#row_kind[@]} -gt 0 ] || return 0
+  [ "${row_kind[$idx]}" = item ] || return 0
+  _section_dir "${row_section[$idx]}" || return 0
+  name=${row_name[$idx]}
+  entry=$SECTION_DIR/$name
+  has_source=0
+  is_source_skill "$name" && has_source=1
+  kind=
+  target=
+  if [ -L "$entry" ]; then
+    kind=l
+    if _link_target_path "$entry"; then
+      target=$CANON
+    fi
+  elif [ -e "$entry" ]; then
+    kind=e
+  fi
+  _compute_state "$kind" "$target" "$has_source" "$name"
+  row_state[$idx]=$STATE
+  row_source[$idx]=$STATE_SOURCE
+  return 0
+}
+
+focus_first_item_in_section() {
+  _section_index "$1" || return 1
+  [ "${section_row_count[$SECTION_IDX]:-0}" -gt 0 ] || return 1
+  current_row=${section_first_row[$SECTION_IDX]}
+}
+
+_find_row() {
+  local section=$1 name=$2 first last i
+  _section_index "$section" || return 1
+  first=${section_first_row[$SECTION_IDX]:-}
+  [ -n "$first" ] || return 1
+  last=$((first + ${section_row_count[$SECTION_IDX]:-0}))
+  i=$first
+  while [ $i -lt $last ]; do
+    if [ "${row_kind[$i]}" = item ] && [ "${row_name[$i]}" = "$name" ]; then
+      ROW_IDX=$i
+      return 0
+    fi
+    i=$((i + 1))
+  done
+  return 1
+}
+
+find_row() {
+  _find_row "$1" "$2" || return 1
+  printf '%s\n' "$ROW_IDX"
+}
+
+focus_item() {
+  _find_row "$1" "$2" || return 1
+  current_row=$ROW_IDX
+}
+
+focus_first_item() {
+  local section
+  focus_first_item_in_section "$active_section" && return 0
+  for section in ${section_ids[@]+"${section_ids[@]}"}; do
+    if focus_first_item_in_section "$section"; then
+      active_section=$section
+      return 0
+    fi
+  done
+  current_row=0
+  return 0
+}
+
+assert_row_state() {
+  if ! _find_row "$1" "$2"; then
+    printf 'row not found: %s/%s\n' "$1" "$2" >&2
+    return 1
+  fi
+  if [ "${row_state[$ROW_IDX]}" != "$3" ]; then
+    printf 'state mismatch for %s/%s: expected %s, got %s\n' "$1" "$2" "$3" "${row_state[$ROW_IDX]}" >&2
+    return 1
+  fi
+}
+
+_format_row_index() {
+  local idx=$1 label name state
+  if [ "${row_kind[$idx]}" = header ]; then
+    _section_title "${row_section[$idx]}" || SECTION_TITLE=${row_section[$idx]}
+    ROW_LABEL="── $SECTION_TITLE ──────────────────"
+    return 0
+  fi
+
+  name=${row_name[$idx]}
+  state=${row_state[$idx]}
+  [ -n "${row_origin[$idx]:-}" ] && name="${row_origin[$idx]}/$name"
+  case "$state" in
+    enabled|readonly) label='[x]' ;;
+    missing) label='[ ]' ;;
+    stale|foreign|dangling) label='[!]' ;;
+    *) label='[]' ;;
+  esac
+
+  case "$state" in
+    stale) ROW_LABEL="$label $name (stale)" ;;
+    readonly|foreign|dangling) ROW_LABEL="$label $name (read-only)" ;;
+    *) ROW_LABEL="$label $name" ;;
+  esac
+  return 0
+}
+
+format_row_index() {
+  _format_row_index "$1"
+  printf '%s\n' "$ROW_LABEL"
+}
+
+row_is_readonly() {
+  case "${row_state[$1]}" in
+    readonly|foreign|dangling) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+format_row() {
+  _find_row "$1" "$2" || return 1
+  _format_row_index "$ROW_IDX"
+  printf '%s\n' "$ROW_LABEL"
+}
+
+can_remove_link() {
+  local section=$1 name=$2 entry
+  _find_row "$section" "$name" || return 1
+  case "${row_state[$ROW_IDX]}" in
+    enabled|stale) ;;
+    *) return 1 ;;
+  esac
+  _section_dir "$section" || return 1
+  entry=$SECTION_DIR/$name
+  [ -L "$entry" ] || return 1
+  _link_target_path "$entry" || return 1
+  [ "$CANON" = "$source_real/$name" ]
+}
+
+set_item_enabled() {
+  local section=$1 name=$2 dir entry
+  _section_dir "$section" || return 1
+  dir=$SECTION_DIR
+  entry=$dir/$name
+  _find_row "$section" "$name" || return 1
+
+  case "${row_state[$ROW_IDX]}" in
+    missing)
+      mkdir -p "$dir"
+      ln -s "$SOURCE_DIR/$name" "$entry"
+      ;;
+    *) return 0 ;;
+  esac
+}
+
+set_item_disabled() {
+  local section=$1 name=$2
+  if can_remove_link "$section" "$name"; then
+    _section_dir "$section" || return 1
+    rm "$SECTION_DIR/$name"
+  fi
+  return 0
+}
+
+toggle_current() {
+  local section name
+  [ ${#row_kind[@]} -gt 0 ] || return 0
+  [ "${row_kind[$current_row]}" = item ] || return 0
+  section=${row_section[$current_row]}
+  name=${row_name[$current_row]}
+
+  case "${row_state[$current_row]}" in
+    enabled|stale) set_item_disabled "$section" "$name" ;;
+    missing) set_item_enabled "$section" "$name" ;;
+    *) return 0 ;;
+  esac
+  refresh_row "$current_row"
+}
+
+toggle_sort() {
+  if [ "$sort_mode" = vendor ]; then
+    sort_mode=name
+  else
+    sort_mode=vendor
+  fi
+  refresh_state
+}
+
+bulk_section() {
+  local action=$1 section idx first last i name
+  [ ${#row_kind[@]} -gt 0 ] || return 0
+  [ "${row_kind[$current_row]}" = item ] || return 0
+  section=${row_section[$current_row]}
+  _section_index "$section" || return 0
+  idx=$SECTION_IDX
+  first=${section_first_row[$idx]:-0}
+  last=$((first + ${section_row_count[$idx]:-0}))
+  i=$first
+  while [ $i -lt $last ]; do
+    name=${row_name[$i]}
+    case "$action" in
+      enable) set_item_enabled "$section" "$name" ;;
+      disable) set_item_disabled "$section" "$name" ;;
+    esac
+    i=$((i + 1))
+  done
+  refresh_state
+}
+
+switch_tab() {
+  local direction=$1 idx next_idx next_section current_name count
+  count=${#section_ids[@]}
+  [ "$count" -gt 1 ] || return 0
+  _section_index "$active_section" || SECTION_IDX=0
+  idx=$SECTION_IDX
+  case "$direction" in
+    right)
+      [ $idx -lt $((count - 1)) ] || return 0
+      next_idx=$((idx + 1))
+      ;;
+    left)
+      [ $idx -gt 0 ] || return 0
+      next_idx=$((idx - 1))
+      ;;
+    *) return 0 ;;
+  esac
+  next_section=${section_ids[$next_idx]}
+
+  current_name=
+  if [ ${#row_kind[@]} -gt 0 ] && [ "${row_kind[$current_row]}" = item ]; then
+    current_name=${row_name[$current_row]}
+  fi
+
+  active_section=$next_section
+  if [ -n "$current_name" ]; then
+    focus_item "$active_section" "$current_name" ||
+      focus_first_item_in_section "$active_section" || true
+  else
+    focus_first_item_in_section "$active_section" || true
+  fi
+  top_row=$current_row
+  return 0
+}
+
+move_cursor() {
+  local delta=$1 next
+  next=$current_row
+  while :; do
+    next=$((next + delta))
+    [ $next -ge 0 ] || return 0
+    [ $next -lt ${#row_kind[@]} ] || return 0
+    if [ "${row_kind[$next]}" = item ]; then
+      [ "${row_section[$next]}" = "$active_section" ] || return 0
+      current_row=$next
+      return 0
+    fi
+  done
+}
+
+read_terminal_size() {
+  local size rows cols
+  size=$(stty size 2>/dev/null || true)
+  rows=${size%% *}
+  cols=${size##* }
+  case "$rows:$cols" in
+    *[!0-9:]*|:*|*:|'')
+      rows=
+      cols=
+      ;;
+  esac
+  if [ -n "$rows" ] && [ -n "$cols" ] && [ "$rows" -gt 0 ] && [ "$cols" -gt 0 ]; then
+    terminal_lines=$rows
+    terminal_cols=$cols
+  else
+    terminal_lines=$(tput lines 2>/dev/null || printf '24')
+    terminal_cols=$(tput cols 2>/dev/null || printf '80')
+  fi
+  [ -n "$terminal_lines" ] || terminal_lines=24
+  [ -n "$terminal_cols" ] || terminal_cols=80
+  return 0
+}
+
+ensure_visible() {
+  local footer_lines visible idx first total current_ordinal wanted_start
+  footer_lines=2
+  [ -n "$warning_text" ] && footer_lines=3
+  visible=$((terminal_lines - footer_lines))
+  [ $visible -lt 1 ] && visible=1
+
+  if [ ${#row_kind[@]} -eq 0 ]; then
+    top_row=0
+    return 0
+  fi
+
+  if [ "${row_kind[$current_row]}" != item ] || [ "${row_section[$current_row]}" != "$active_section" ]; then
+    focus_first_item_in_section "$active_section" || return 0
+  fi
+
+  _section_index "$active_section" || return 0
+  idx=$SECTION_IDX
+  first=${section_first_row[$idx]:-0}
+  total=${section_row_count[$idx]:-0}
+  if [ "$total" -le 0 ]; then
+    top_row=$current_row
+    return 0
+  fi
+
+  current_ordinal=$((current_row - first))
+  if [ $top_row -ge $first ] && [ $top_row -lt $((first + total)) ]; then
+    wanted_start=$((top_row - first))
+  else
+    wanted_start=0
+  fi
+
+  if [ $current_ordinal -lt $wanted_start ]; then
+    wanted_start=$current_ordinal
+  fi
+  if [ $current_ordinal -ge $((wanted_start + visible)) ]; then
+    wanted_start=$((current_ordinal - visible + 1))
+  fi
+  if [ $((total - wanted_start)) -lt $visible ]; then
+    wanted_start=$((total - visible))
+  fi
+  [ $wanted_start -lt 0 ] && wanted_start=0
+
+  top_row=$((first + wanted_start))
+  return 0
+}
+
+_format_tabs() {
+  local i part
+  TABS_LINE=
+  i=0
+  while [ $i -lt ${#section_ids[@]} ]; do
+    if [ "${section_ids[$i]}" = "$active_section" ]; then
+      part="[${section_titles[$i]}]"
+    else
+      part=${section_titles[$i]}
+    fi
+    if [ $i -gt 0 ]; then
+      TABS_LINE="$TABS_LINE  "
+    fi
+    TABS_LINE=$TABS_LINE$part
+    i=$((i + 1))
+  done
+  return 0
+}
+
+format_tabs() {
+  _format_tabs
+  printf '%s\n' "$TABS_LINE"
+}
+
+# One frame, one write. Cursor moves and attributes are inline escapes; each
+# line is cleared with EL instead of being padded, so nothing is truncated
+# mid-character and the bottom-right cell is never touched.
+draw() {
+  local i line max_rows footer_row frame label
+  drawing=1
+  if [ "$size_dirty" -eq 1 ]; then
+    read_terminal_size
+    size_dirty=0
+  fi
+  ensure_visible
+
+  _format_tabs
+  label=$TABS_LINE
+  [ ${#label} -gt "$terminal_cols" ] && label=${label:0:$terminal_cols}
+  frame=$CSI'1;1H'$label$ANSI_EL
+
+  max_rows=$terminal_lines
+  [ -n "$warning_text" ] && max_rows=$((max_rows - 1))
+  max_rows=$((max_rows - 2))
+  [ $max_rows -lt 1 ] && max_rows=1
+
+  i=$top_row
+  line=1
+  while [ $i -lt ${#row_kind[@]} ] && [ $line -le $max_rows ]; do
+    if [ "${row_kind[$i]}" = item ] && [ "${row_section[$i]}" = "$active_section" ]; then
+      _format_row_index "$i"
+      label=$ROW_LABEL
+      [ ${#label} -gt "$terminal_cols" ] && label=${label:0:$terminal_cols}
+      frame=$frame$CSI$((line + 1))';1H'
+      [ "$i" -eq "$current_row" ] && frame=$frame$ANSI_REV
+      row_is_readonly "$i" && frame=$frame$ANSI_DIM
+      frame=$frame$label$ANSI_RESET$ANSI_EL
+      line=$((line + 1))
+    elif [ "$line" -gt 1 ] && [ "${row_kind[$i]}" = item ]; then
+      break
+    fi
+    i=$((i + 1))
+  done
+
+  if [ -n "$warning_text" ] && [ $line -lt $terminal_lines ]; then
+    label=$warning_text
+    [ ${#label} -gt "$terminal_cols" ] && label=${label:0:$terminal_cols}
+    frame=$frame$CSI$((line + 1))';1H'$label$ANSI_EL
+    line=$((line + 1))
+  fi
+
+  footer_row=$((terminal_lines - 1))
+  [ $footer_row -lt 0 ] && footer_row=0
+  if [ $line -lt $footer_row ]; then
+    frame=$frame$CSI$((line + 1))';1H'$ANSI_ED
+  fi
+
+  label=$FOOTER_TEXT$sort_mode
+  [ ${#label} -gt "$terminal_cols" ] && label=${label:0:$terminal_cols}
+  frame=$frame$CSI$((footer_row + 1))';1H'$label$ANSI_EL
+
+  printf '%s' "$frame"
+  drawing=0
+  return 0
+}
+
+cleanup_terminal() {
+  trap - INT TERM EXIT
+  if [ -n "$original_stty" ]; then
+    stty "$original_stty" 2>/dev/null || true
+  fi
+  tput cnorm 2>/dev/null || true
+  tput sgr0 2>/dev/null || true
+  tput rmcup 2>/dev/null || true
+}
+
+interrupt_exit() {
+  cleanup_terminal
+  exit 130
+}
+
+term_exit() {
+  cleanup_terminal
+  exit 143
+}
+
+# bash runs this trap while blocked in read and then resumes the read, so the
+# redraw has to happen here: the main loop would not get control until the next
+# keystroke. `drawing` avoids interleaving with a draw that is already running.
+handle_resize() {
+  resize_pending=1
+  size_dirty=1
+  [ "$drawing" -eq 1 ] && return 0
+  resize_pending=0
+  draw
+  return 0
+}
+
+setup_terminal() {
+  if [ ! -t 0 ] || [ ! -t 1 ]; then
+    printf 'sync-skills requires an interactive terminal.\n' >&2
+    exit 1
+  fi
+  original_stty=$(stty -g)
+  trap cleanup_terminal EXIT
+  trap interrupt_exit INT
+  trap term_exit TERM
+  trap handle_resize WINCH
+  tput smcup 2>/dev/null || true
+  tput civis 2>/dev/null || true
+  stty -echo -icanon min 1 time 0
+}
+
+handle_key() {
+  local key=$1 rest=
+  case "$key" in
+    q) return 1 ;;
+    '') return 1 ;;
+    $'\n'|$'\r') return 1 ;;
+    j) move_cursor 1 ;;
+    k) move_cursor -1 ;;
+    ' ') toggle_current ;;
+    a) bulk_section enable ;;
+    s) toggle_sort ;;
+    n) bulk_section disable ;;
+    $'\e')
+      IFS= read -r -s -n 2 -t 1 rest || rest=
+      case "$rest" in
+        '[B'|'OB') move_cursor 1 ;;
+        '[A'|'OA') move_cursor -1 ;;
+        '[C'|'OC') switch_tab right ;;
+        '[D'|'OD') switch_tab left ;;
+      esac
+      ;;
+  esac
+  return 0
+}
+
+# One keystroke per frame, with no debounce and nothing discarded. A full
+# read-handle-draw cycle costs ~6ms, well under the ~30ms of the fastest macOS
+# key repeat, so held keys scroll smoothly without needing to be coalesced.
+# (Coalescing is not even possible here: `read -n` makes bash force VMIN=1, so
+# an `stty min 0` non-blocking read never returns early.)
+main() {
+  local key
+  init_paths
+  refresh_state
+  setup_terminal
+
+  while :; do
+    draw
+    if ! IFS= read -r -s -n 1 key; then
+      # bash 3.2 reports both EOF and an interrupted read as 1, so a pending
+      # resize is the only way to tell a signal apart from a closed terminal.
+      if [ "$resize_pending" -eq 1 ]; then
+        resize_pending=0
+        continue
+      fi
+      break
+    fi
+    handle_key "$key" || break
+  done
+}
+
+if [ "${SYNC_SKILLS_TEST_MODE:-}" != 1 ]; then
+  main "$@"
+  cleanup_terminal
+fi

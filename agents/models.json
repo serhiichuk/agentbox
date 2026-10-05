@@ -1,0 +1,22 @@
+{
+  "classes": {
+    "default":  { "claude": "opus",   "omp": "openai-codex/gpt-6.1-sol:high",  "agy": "gemini-3.8-flash-high" },
+    "plan":     { "claude": "opus",   "omp": "openai-codex/gpt-6.1-sol:high",  "agy": "gemini-3.8-flash-high" },
+    "slow":     { "claude": "opus",   "omp": "openai-codex/gpt-6.1-sol:high",  "agy": "gemini-3.8-flash-high" },
+    "task":     { "claude": "sonnet", "omp": "openai-codex/gpt-6-luna:max",    "agy": "gemini-3.8-flash-high" },
+    "smol":     { "claude": "haiku",  "omp": "openai-codex/gpt-6-luna:medium", "agy": "gemini-3.8-flash-medium" },
+    "advisor":  { "omp": "openai-codex/gpt-6.1-sol:high" },
+    "designer": { "omp": "openai-codex/gpt-6.1-sol" },
+    "commit":   { "omp": "openai-codex/gpt-6-luna:medium" },
+    "tiny":     { "omp": "openai-codex/gpt-6-luna:medium" },
+    "image":    { "omp": "openai-codex/gpt-image-1" }
+  },
+  "agents": {
+    "reviewer": { "omp": "openai-codex/gpt-6.1-sol" },
+    "scout":    { "omp": "openai-codex/gpt-6-luna:medium" }
+  },
+  "roles": {
+    "comment-sicko": "task",
+    "poteto-agent": "default"
+  }
+}
