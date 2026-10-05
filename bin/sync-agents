@@ -154,7 +154,7 @@ sync_role() {
     rendered=$TMP_DIR/omp-$name.md
     build=$BUILD_DIR/omp/$name.md
     {
-      printf -- '---\nname: %s\ndescription: %s\n---\n' "$name" "$description"
+      printf -- '---\nname: %s\ndescription: %s\nmodel: "@%s"\n---\n' "$name" "$description" "$class"
       body "$file"
     } >"$rendered"
     write_rendered omp "$rendered" "$build"
@@ -300,10 +300,10 @@ main() {
     [ -f "$file" ] || continue
     name=$(basename "$file" .md)
     class=$(role_class "$file")
+    roles="$roles$name "
     if ! jq -e --arg c "$class" '.classes[$c]' "$MODELS" >/dev/null; then
       error "$file: class '$class' is not in models.json"
     else
-      roles="$roles$name "
       sync_role "$file" "$name" "$class"
     fi
   done
