@@ -13,6 +13,7 @@ This repo is upstream pstack from [`cursor/plugins`](https://github.com/cursor/p
 - `bin/sync-skills` links `skills/*` into each harness.
 - `bin/sync-agents` renders `agents/*.md` per harness with models from `agents/models.json`, and links `global/AGENTS.md`. It derives a role's name from its file name and its model class from the `roles` map in `models.json`, so upstream's role files stay unedited.
 - `agents/models.json` mirrors the classes in the agents repo.
+- `skills/deslop/` is Cursor's `deslop` skill from `cursor-team-kit`, copied verbatim (see `UPSTREAM`). pstack invokes it by name.
 
 ## Patches to upstream files
 
@@ -33,7 +34,7 @@ git add -A && git commit -m "chore: vendor upstream pstack from cursor/plugins@<
 git switch main && git merge upstream
 ```
 
-Set `commit:` in `UPSTREAM` to the new sha. Then grep the new upstream for Cursor terms the map in `global/AGENTS.md` lacks (`Task`, `subagent_type`, `cloud`, `origin pr`, `cursor-team-kit`, `AskQuestion`, `/loop`, `create-skill`, `.cursor/`), and add rows for them.
+Set both `commit:` lines in `UPSTREAM` to the new sha, and refresh `skills/deslop/SKILL.md` on `main` from `cursor-team-kit/skills/deslop/` (add `cursor-team-kit` to the sparse checkout). Then grep the new upstream for Cursor terms the map in `global/AGENTS.md` lacks (`Task`, `subagent_type`, `cloud`, `origin pr`, `cursor-team-kit`, `AskQuestion`, `/loop`, `create-skill`, `.cursor/`), and add rows for them.
 
 ## Deploy
 
