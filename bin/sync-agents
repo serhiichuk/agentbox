@@ -151,10 +151,11 @@ sync_role() {
   description=$(frontmatter_value "$file" description)
 
   if has_omp; then
+    model=$(resolve_model omp "$name" "$class")
     rendered=$TMP_DIR/omp-$name.md
     build=$BUILD_DIR/omp/$name.md
     {
-      printf -- '---\nname: %s\ndescription: %s\nmodel: "@%s"\n---\n' "$name" "$description" "$class"
+      printf -- '---\nname: %s\ndescription: %s\nmodel: "%s"\n---\n' "$name" "$description" "$model"
       body "$file"
     } >"$rendered"
     write_rendered omp "$rendered" "$build"
