@@ -46,4 +46,4 @@ bin/sync-agents          # dry run
 bin/sync-agents --apply
 ```
 
-Copy `global/AGENTS.md` there separately, since it is untracked. Put the models file at `~/.cursor/rules/pstack-models.mdc`, where the skills look for it, or run `/setup-pstack`.
+Copy `global/AGENTS.md` there separately, since it is untracked. Put the models file at `~/.cursor/rules/pstack-models.mdc`, where the skills look for it, or run `/setup-pstack`. Give it `alwaysApply: true` frontmatter so omp applies it, and link it as `~/.claude/pstack-models.md` (`ln -s ~/.cursor/rules/pstack-models.mdc ~/.claude/pstack-models.md`), since Claude Code imports only `.md` files.
