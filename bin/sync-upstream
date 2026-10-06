@@ -69,7 +69,16 @@ git -C "$CACHE" diff "$pin" "$new" -- "${PATHS[@]}" | grep -E '^\+[^+]' | grep -
 git -C "$CACHE" checkout -q "$new"
 tmp=$(mktemp -d)
 # A leftover worktree holds the upstream branch and blocks the next --apply.
-trap 'git -C "$REPO" worktree remove --force "$tmp/upstream" 2>/dev/null || true; rm -rf "$tmp"' EXIT
+remove_worktree() {
+  local status=$?
+  if [ -d "$tmp/upstream" ] && ! git -C "$REPO" worktree remove --force "$tmp/upstream"; then
+    echo 'sync-upstream: remove the leftover upstream worktree by hand (git worktree list)' >&2
+    [ "$status" -ne 0 ] || status=1
+  fi
+  rmdir "$tmp" 2>/dev/null || true
+  exit "$status"
+}
+trap remove_worktree EXIT
 git -C "$REPO" worktree add -q "$tmp/upstream" upstream
 rsync -a --delete --exclude .git --exclude .cursor-plugin --exclude assets --exclude docs \
   "$CACHE/pstack/" "$tmp/upstream/"
