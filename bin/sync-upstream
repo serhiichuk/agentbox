@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+
+# Check, diff, or take upstream pstack updates from cursor/plugins.
+# Bash 3.2-compatible.
+
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: sync-upstream [--diff] [--apply] [<ref>]
+
+Compare the commit pinned in UPSTREAM with cursor/plugins <ref> (default main)
+on the paths this repo copies. The default lists new commits, changed files,
+and Cursor terms in added lines that global/AGENTS.md may need to map.
+
+  --diff   also print the full diff
+  --apply  vendor <ref> onto the upstream branch, merge it into main,
+           refresh skills/deslop, and pin UPSTREAM to it
+EOF
+}
+
+die() {
+  printf 'sync-upstream: %s\n' "$1" >&2
+  exit 1
+}
+
+REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+CACHE=${PSTACK_UPSTREAM_CACHE:-$HOME/.cache/pstack-upstream}
+PATHS=(pstack cursor-team-kit/skills/deslop
+  ':!pstack/.cursor-plugin' ':!pstack/assets' ':!pstack/docs')
+CURSOR_TERMS='Task|subagent_type|generalPurpose|cloud|origin pr|cursor-team-kit|control-(ui|cli)|AskQuestion|/loop|create-skill|\.cursor/|pstack-models'
+
+show_diff=0 apply=0 ref=main
+for arg in "$@"; do
+  case $arg in
+    --diff) show_diff=1 ;;
+    --apply) apply=1 ;;
+    -h | --help) usage; exit 0 ;;
+    -*) usage >&2; exit 2 ;;
+    *) ref=$arg ;;
+  esac
+done
+
+if [ ! -d "$CACHE/.git" ]; then
+  git clone -q --filter=blob:none --no-checkout https://github.com/cursor/plugins "$CACHE"
+  git -C "$CACHE" sparse-checkout set pstack cursor-team-kit/skills/deslop
+fi
+git -C "$CACHE" fetch -q origin "$ref"
+pin=$(awk '/^commit:/ { print $2; exit }' "$REPO/UPSTREAM")
+new=$(git -C "$CACHE" rev-parse FETCH_HEAD)
+
+if git -C "$CACHE" diff --quiet "$pin" "$new" -- "${PATHS[@]}"; then
+  printf 'nothing new: %s..%s does not touch the copied paths\n' "${pin:0:8}" "${new:0:8}"
+  exit 0
+fi
+
+git -C "$CACHE" log --oneline "$pin..$new" -- "${PATHS[@]}"
+echo
+git -C "$CACHE" diff --stat "$pin" "$new" -- "${PATHS[@]}"
+echo
+echo "Cursor terms in added lines:"
+git -C "$CACHE" diff "$pin" "$new" -- "${PATHS[@]}" | grep -E '^\+[^+]' | grep -cE "$CURSOR_TERMS" || true
+[ "$show_diff" -eq 1 ] && git -C "$CACHE" diff "$pin" "$new" -- "${PATHS[@]}"
+[ "$apply" -eq 1 ] || exit 0
+
+[ "$(git -C "$REPO" branch --show-current)" = main ] || die "check out main first"
+[ -z "$(git -C "$REPO" status --porcelain --untracked-files=no)" ] || die "commit or stash tracked changes first"
+
+git -C "$CACHE" checkout -q "$new"
+tmp=$(mktemp -d)
+git -C "$REPO" worktree add -q "$tmp/upstream" upstream
+rsync -a --delete --exclude .git --exclude .cursor-plugin --exclude assets --exclude docs \
+  "$CACHE/pstack/" "$tmp/upstream/"
+git -C "$tmp/upstream" add -A
+git -C "$tmp/upstream" commit -q -m "chore: vendor upstream pstack from cursor/plugins@${new:0:8}"
+git -C "$REPO" worktree remove "$tmp/upstream"
+rmdir "$tmp"
+
+git -C "$REPO" merge -q --no-edit upstream ||
+  die "merge conflict: resolve and commit, then copy skills/deslop and bump UPSTREAM by hand"
+cp "$CACHE/cursor-team-kit/skills/deslop/SKILL.md" "$REPO/skills/deslop/SKILL.md"
+sed -i.bak "s/^commit: .*/commit: $new/" "$REPO/UPSTREAM" && rm "$REPO/UPSTREAM.bak"
+git -C "$REPO" commit -q -am "chore: pin upstream at cursor/plugins@${new:0:8}"
+git -C "$REPO" log --oneline -3
+echo "Review new Cursor terms against global/AGENTS.md, then redeploy (LOCAL.md, Deploy)."

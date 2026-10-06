@@ -26,15 +26,12 @@ Keep this list short. Fix a Cursor-ism in `global/AGENTS.md` unless only code ca
 ## Update from upstream
 
 ```sh
-git clone --filter=blob:none --no-checkout https://github.com/cursor/plugins /tmp/plugins
-git -C /tmp/plugins sparse-checkout set pstack && git -C /tmp/plugins checkout <sha>
-git switch upstream
-rsync -a --delete --exclude .git --exclude .cursor-plugin --exclude assets --exclude docs /tmp/plugins/pstack/ ./
-git add -A && git commit -m "chore: vendor upstream pstack from cursor/plugins@<sha>"
-git switch main && git merge upstream
+bin/sync-upstream            # new commits, changed files, Cursor terms in added lines
+bin/sync-upstream --diff     # plus the full diff
+bin/sync-upstream --apply    # vendor onto `upstream`, merge into main, refresh deslop, bump UPSTREAM
 ```
 
-Set both `commit:` lines in `UPSTREAM` to the new sha, and refresh `skills/deslop/SKILL.md` on `main` from `cursor-team-kit/skills/deslop/` (add `cursor-team-kit` to the sparse checkout). Then grep the new upstream for Cursor terms the map in `global/AGENTS.md` lacks (`Task`, `subagent_type`, `cloud`, `origin pr`, `cursor-team-kit`, `AskQuestion`, `/loop`, `create-skill`, `.cursor/`), and add rows for them.
+It keeps a sparse clone of cursor/plugins in `~/.cache/pstack-upstream`. After `--apply`, check the reported Cursor terms against the map in `global/AGENTS.md`, then deploy.
 
 ## Deploy
 
