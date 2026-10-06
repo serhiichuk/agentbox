@@ -68,13 +68,15 @@ git -C "$CACHE" diff "$pin" "$new" -- "${PATHS[@]}" | grep -E '^\+[^+]' | grep -
 
 git -C "$CACHE" checkout -q "$new"
 tmp=$(mktemp -d)
+# A leftover worktree holds the upstream branch and blocks the next --apply.
+trap 'git -C "$REPO" worktree remove --force "$tmp/upstream" 2>/dev/null || true; rm -rf "$tmp"' EXIT
 git -C "$REPO" worktree add -q "$tmp/upstream" upstream
 rsync -a --delete --exclude .git --exclude .cursor-plugin --exclude assets --exclude docs \
   "$CACHE/pstack/" "$tmp/upstream/"
 git -C "$tmp/upstream" add -A
-git -C "$tmp/upstream" commit -q -m "chore: vendor upstream pstack from cursor/plugins@${new:0:8}"
-git -C "$REPO" worktree remove "$tmp/upstream"
-rmdir "$tmp"
+# Unchanged on a deslop-only update, or on a retry after a later step failed.
+git -C "$tmp/upstream" diff --cached --quiet ||
+  git -C "$tmp/upstream" commit -q -m "chore: vendor upstream pstack from cursor/plugins@${new:0:8}"
 
 git -C "$REPO" merge -q --no-edit upstream ||
   die "merge conflict: resolve and commit, then copy skills/deslop and bump UPSTREAM by hand"
