@@ -9,7 +9,7 @@ This repo is upstream pstack from [`cursor/plugins`](https://github.com/cursor/p
 
 ## Local files
 
-- `global/AGENTS.md` maps pstack's Cursor tools, paths, and model slugs to this setup, and sets the push and merge policy. It is untracked. `bin/sync-agents` links it as each harness's global instructions when it exists.
+- `global/AGENTS.md` sets the push and merge policy, runs pstack's delegation through Orca, and imports the models file `~/.agents/pstack-models.md`. `bin/sync-agents --apply` links it as each harness's global instructions.
 - `bin/sync-skills` links `skills/*` into each harness.
 - `bin/sync-agents` renders `agents/*.md` per harness with models from `agents/models.json`, and links `global/AGENTS.md`. It derives a role's name from its file name and its model class from the `roles` map in `models.json`, so upstream's role files stay unedited.
 - `agents/models.json` mirrors the classes in the agents repo.
@@ -43,4 +43,4 @@ bin/sync-agents          # dry run
 bin/sync-agents --apply
 ```
 
-Copy `global/AGENTS.md` to the harnesses' global instruction files. Put the models file at `~/.agents/pstack-models.md`: upstream's role lines with alias values, plus an `## aliases` block with one start command per alias. `global/AGENTS.md` imports it and points the skills' `~/.cursor/rules/pstack-models.mdc` references at it. Do not run `/setup-pstack`: it writes Cursor model names to the Cursor path.
+Put the models file at `~/.agents/pstack-models.md`: upstream's role lines with alias values, plus an `## aliases` block with one start command per alias. `global/AGENTS.md` imports it and points the skills' `~/.cursor/rules/pstack-models.mdc` references at it. Do not run `/setup-pstack`: it writes Cursor model names to the Cursor path.
