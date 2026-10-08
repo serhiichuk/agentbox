@@ -20,7 +20,7 @@ This machine runs Claude Code, omp, and agy, usually inside Orca. The pstack ski
 
 @~/.agents/pstack-models.md
 
-The models file is `~/.agents/pstack-models.md`. Where a skill names `~/.cursor/rules/pstack-models.mdc` or the `pstack-models.mdc` rule, use this file. If its role lines are not in your context, read it whenever a skill names a role.
+The models file is `~/.agents/pstack-models.md`. `~/.cursor/rules/pstack-models.mdc`, the path the skills name, links to it. If its role lines are not in your context, read it whenever a skill names a role.
 
 - Each role line names an alias. Start the worker with that alias's command from the file's `## aliases` block, in the worker's Orca terminal.
 - `inherit-parent` runs the role on the harness's own subagent tool, on the parent's model.

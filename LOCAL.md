@@ -43,4 +43,4 @@ bin/sync-agents          # dry run
 bin/sync-agents --apply
 ```
 
-Put the models file at `~/.agents/pstack-models.md`: upstream's role lines with alias values, plus an `## aliases` block with one start command per alias. `global/AGENTS.md` imports it and points the skills' `~/.cursor/rules/pstack-models.mdc` references at it. Do not run `/setup-pstack`: it writes Cursor model names to the Cursor path.
+Put the models file at `~/.agents/pstack-models.md`: upstream's role lines with alias values, plus an `## aliases` block with one start command per alias. Link it at the path the skills name: `mkdir -p ~/.cursor/rules && ln -s ~/.agents/pstack-models.md ~/.cursor/rules/pstack-models.mdc`. Claude Code and omp read it through the import in `global/AGENTS.md`. agy does not expand the import and reads the file when a skill names it. Do not run `/setup-pstack`: it overwrites the file with Cursor model names.
