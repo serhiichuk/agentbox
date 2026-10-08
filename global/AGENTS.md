@@ -28,5 +28,5 @@ The models file is `~/.agents/pstack-models.md`. `~/.cursor/rules/pstack-models.
   - An alias name, such as `opus`, runs that alias.
 - `self strong` and `inherit-parent` run on the harness's own subagent tool, on the parent's model.
 - Start every other alias with its command from the file's `## aliases` block, in the worker's Orca terminal.
-- A review or a test of your own work always runs on `others`.
+- A review or a test of your own work always runs on `others strong`.
 - If the file or the role line is missing, use `self strong` for code and `others strong` for review. Say so.
