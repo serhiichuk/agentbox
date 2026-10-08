@@ -22,6 +22,11 @@ This machine runs Claude Code, omp, and agy, usually inside Orca. The pstack ski
 
 The models file is `~/.agents/pstack-models.md`. `~/.cursor/rules/pstack-models.mdc`, the path the skills name, links to it. If its role lines are not in your context, read it whenever a skill names a role.
 
-- Each role line names an alias. Start the worker with that alias's command from the file's `## aliases` block, in the worker's Orca terminal.
-- `inherit-parent` runs the role on the harness's own subagent tool, on the parent's model.
-- If the file or the role line is missing, use `opus` for `claude-opus-*` and `sol` for `grok-*`.
+- A role value names who runs the role. Each harness is one model family: `claude` is Anthropic, `omp` is OpenAI, `agy` is Google.
+  - `self` is your own harness, `others` is the two other harnesses, and `all` is all three. `strong` picks each harness's strong alias from `## families`.
+  - `cheap` is `haiku` or `gemini`, whichever is not your own harness. In omp, `cheap` is `haiku`.
+  - An alias name, such as `opus`, runs that alias.
+- `self strong` and `inherit-parent` run on the harness's own subagent tool, on the parent's model.
+- Start every other alias with its command from the file's `## aliases` block, in the worker's Orca terminal.
+- A review or a test of your own work always runs on `others`.
+- If the file or the role line is missing, use `self strong` for code and `others strong` for review. Say so.

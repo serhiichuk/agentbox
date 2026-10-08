@@ -15,6 +15,14 @@
     "reviewer": { "omp": "openai-codex/gpt-6.1-sol" },
     "scout":    { "omp": "openai-codex/gpt-6-luna:medium" }
   },
+  "aliases": {
+    "sol":    { "harness": "omp",    "class": "default" },
+    "luna":   { "harness": "omp",    "class": "task" },
+    "astra":  { "harness": "omp",    "model": "openai-codex/gpt-6-astra" },
+    "opus":   { "harness": "claude", "class": "default" },
+    "haiku":  { "harness": "claude", "class": "smol" },
+    "gemini": { "harness": "agy",    "class": "default" }
+  },
   "roles": {
     "comment-sicko": "task",
     "poteto-agent": "default"

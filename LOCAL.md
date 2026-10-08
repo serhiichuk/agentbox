@@ -12,7 +12,7 @@ This repo is upstream pstack from [`cursor/plugins`](https://github.com/cursor/p
 - `global/AGENTS.md` sets the push and merge policy, runs pstack's delegation through Orca, and imports the models file `~/.agents/pstack-models.md`. `bin/sync-agents --apply` links it as each harness's global instructions.
 - `bin/sync-skills` links `skills/*` into each harness.
 - `bin/sync-agents` renders `agents/*.md` per harness with models from `agents/models.json`, and links `global/AGENTS.md`. It derives a role's name from its file name and its model class from the `roles` map in `models.json`, so upstream's role files stay unedited.
-- `agents/models.json` mirrors the classes in the agents repo.
+- `agents/models.json` mirrors the classes and aliases in the agents repo.
 - `skills/deslop/` is Cursor's `deslop` skill from `cursor-team-kit`, copied verbatim (see `UPSTREAM`). pstack invokes it by name.
 
 ## Patches to upstream files
