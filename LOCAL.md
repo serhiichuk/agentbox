@@ -5,7 +5,7 @@ This repo is upstream pstack from [`cursor/plugins`](https://github.com/cursor/p
 ## Branches
 
 - `upstream` holds upstream's `pstack/` verbatim, one commit per update, without `.cursor-plugin/`, `assets/`, and `docs/`.
-- `main` is `upstream` plus the local files and patches.
+- `pstack` is `upstream` plus the local files and patches.
 
 ## Local files
 
@@ -28,7 +28,7 @@ Keep this list short. Fix a Cursor-ism in `global/AGENTS.md` unless only code ca
 ```sh
 bin/sync-upstream            # new commits, changed files, Cursor terms in added lines
 bin/sync-upstream --diff     # plus the full diff
-bin/sync-upstream --apply    # vendor onto `upstream`, merge into main, refresh deslop, bump UPSTREAM
+bin/sync-upstream --apply    # vendor onto `upstream`, merge into pstack, refresh deslop, bump UPSTREAM
 ```
 
 It keeps a sparse clone of cursor/plugins in `~/.cache/pstack-upstream`. After `--apply`, check the reported Cursor terms against the map in `global/AGENTS.md`, then deploy.
