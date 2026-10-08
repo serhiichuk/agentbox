@@ -43,4 +43,4 @@ bin/sync-agents          # dry run
 bin/sync-agents --apply
 ```
 
-Copy `global/AGENTS.md` there separately, since it is untracked. Put the models file at `~/.cursor/rules/pstack-models.mdc`, where the skills look for it, or run `/setup-pstack`. Give it `alwaysApply: true` frontmatter so omp applies it, and link it as `~/.claude/pstack-models.md` (`ln -s ~/.cursor/rules/pstack-models.mdc ~/.claude/pstack-models.md`), since Claude Code imports only `.md` files.
+Copy `global/AGENTS.md` to the harnesses' global instruction files. Put the models file at `~/.agents/pstack-models.md`: upstream's role lines with alias values, plus an `## aliases` block with one start command per alias. `global/AGENTS.md` imports it and points the skills' `~/.cursor/rules/pstack-models.mdc` references at it. Do not run `/setup-pstack`: it writes Cursor model names to the Cursor path.
