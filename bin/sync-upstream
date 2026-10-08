@@ -14,7 +14,7 @@ on the paths this repo copies. The default lists new commits, changed files,
 and Cursor terms in added lines that global/AGENTS.md may need to map.
 
   --diff   also print the full diff
-  --apply  vendor <ref> onto the upstream branch, merge it into pstack,
+  --apply  vendor <ref> onto the upstream branch, merge it into main,
            refresh skills/deslop, and pin UPSTREAM to it
 EOF
 }
@@ -63,7 +63,7 @@ git -C "$CACHE" diff "$pin" "$new" -- "${PATHS[@]}" | grep -E '^\+[^+]' | grep -
 [ "$show_diff" -eq 1 ] && git -C "$CACHE" diff "$pin" "$new" -- "${PATHS[@]}"
 [ "$apply" -eq 1 ] || exit 0
 
-[ "$(git -C "$REPO" branch --show-current)" = pstack ] || die "check out pstack first"
+[ "$(git -C "$REPO" branch --show-current)" = main ] || die "check out main first"
 [ -z "$(git -C "$REPO" status --porcelain --untracked-files=no)" ] || die "commit or stash tracked changes first"
 
 git -C "$CACHE" checkout -q "$new"
