@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+set -e -o pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: sync-vendors
+
+Fetch and update all vendor submodules, then link every tracked SKILL.md directory
+into ./skills. Name conflicts abort before any catalog changes. Local skills and
+foreign links are preserved; moved vendor links are repaired and stale ones removed.
+EOF
+}
+
+case "${1:-}" in
+  '') [ "$#" -eq 0 ] || { usage >&2; exit 2; } ;;
+  -h|--help) usage; exit 0 ;;
+  *) usage >&2; exit 2 ;;
+esac
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)
+REPO_ROOT=${SYNC_VENDORS_REPO_ROOT:-$(cd "$script_dir/.." && pwd)}
+SKILLS_DIR=$REPO_ROOT/skills
+names=()
+targets=()
+errors=0
+
+trim() {
+  local value=$1
+  value=${value#"${value%%[![:space:]]*}"}
+  value=${value%"${value##*[![:space:]]}"}
+  printf '%s\n' "$value"
+}
+
+read_skill_name() {
+  local file=$1 line value in_frontmatter=0
+  while IFS= read -r line; do
+    line=${line%$'\r'}
+    if [ "$line" = '---' ]; then
+      [ "$in_frontmatter" -eq 0 ] || return 1
+      in_frontmatter=1
+      continue
+    fi
+    [ "$in_frontmatter" -eq 1 ] || continue
+    case "$line" in
+      name:*)
+        value=$(trim "${line#name:}")
+        case "$value" in
+          \"*\") value=${value#\"}; value=${value%\"} ;;
+          \'*\') value=${value#\'}; value=${value%\'} ;;
+        esac
+        printf '%s\n' "$value"
+        return 0
+        ;;
+    esac
+  done <"$file"
+  return 1
+}
+
+is_managed_vendor_link() {
+  local relative
+  case "$1" in
+    ../vendor/*) relative=${1#../vendor/} ;;
+    "$REPO_ROOT"/vendor/*) relative=${1#"$REPO_ROOT"/vendor/} ;;
+    *) return 1 ;;
+  esac
+  case "/$relative/" in
+    */../*|*/./*|*//*) return 1 ;;
+  esac
+}
+
+has_name() {
+  local wanted=$1 name
+  for name in "${names[@]}"; do
+    [ "$name" != "$wanted" ] || return 0
+  done
+  return 1
+}
+
+git -C "$REPO_ROOT" submodule foreach --quiet --recursive '
+  case "$displaypath" in
+    vendor/*)
+      if [ -n "$(git status --porcelain)" ]; then
+        printf "error: vendor has local changes: %s\n" "$displaypath" >&2
+        exit 1
+      fi
+      ;;
+  esac
+' || exit 1
+git -C "$REPO_ROOT" submodule update --init --remote -- vendor || exit 1
+git -C "$REPO_ROOT" submodule foreach --quiet '
+  case "$displaypath" in
+    vendor/*) git submodule update --init --recursive ;;
+  esac
+' || exit 1
+modules=$(git -C "$REPO_ROOT" config --file .gitmodules --get-regexp '^submodule\..*\.path$')
+while IFS= read -r module; do
+  vendor_path=${module#* }
+  case "$vendor_path" in vendor/*) ;; *) continue ;; esac
+  vendor_dir=$REPO_ROOT/$vendor_path
+  files=$(git -C "$vendor_dir" -c core.quotePath=false ls-files 'SKILL.md' '*/SKILL.md')
+  while IFS= read -r file; do
+    [ -n "$file" ] || continue
+    path=${file%SKILL.md}
+    path=${path%/}
+    target=../$vendor_path${path:+/$path}
+    name=$(basename "$vendor_dir${path:+/$path}")
+    skill_name=$(read_skill_name "$vendor_dir/$file" || true)
+    if ! [[ $name =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] || [ "$skill_name" != "$name" ]; then
+      printf 'error: invalid skill name: %s/%s (name: %s)\n' "$vendor_path" "$file" "$skill_name" >&2
+      errors=$((errors + 1))
+      continue
+    fi
+    if ! is_managed_vendor_link "$target"; then
+      printf 'error: invalid skill path: %s\n' "$target" >&2
+      errors=$((errors + 1))
+      continue
+    fi
+    if has_name "$name"; then
+      printf 'error: skill name conflict: %s (%s)\n' "$name" "$target" >&2
+      errors=$((errors + 1))
+    fi
+    entry=$SKILLS_DIR/$name
+    if [ -L "$entry" ]; then
+      current=$(readlink "$entry")
+      if ! is_managed_vendor_link "$current"; then
+        printf 'error: skill name conflict: %s (foreign link: %s)\n' "$name" "$current" >&2
+        errors=$((errors + 1))
+      fi
+    elif [ -e "$entry" ]; then
+      printf 'error: skill name conflict: %s (local entry)\n' "$name" >&2
+      errors=$((errors + 1))
+    fi
+    names[${#names[@]}]=$name
+    targets[${#targets[@]}]=$target
+  done <<<"$files"
+done <<<"$modules"
+
+[ "$errors" -eq 0 ] || exit 1
+[ "${#names[@]}" -gt 0 ] || { printf 'error: no vendor skills found\n' >&2; exit 1; }
+mkdir -p "$SKILLS_DIR"
+for ((i = 0; i < ${#names[@]}; i++)); do
+  entry=$SKILLS_DIR/${names[$i]}
+  target=${targets[$i]}
+  if [ -L "$entry" ]; then
+    [ "$(readlink "$entry")" != "$target" ] || continue
+    rm "$entry"
+  fi
+  ln -s "$target" "$entry"
+  printf 'linked: %s -> %s\n' "${names[$i]}" "$target"
+done
+for entry in "$SKILLS_DIR"/*; do
+  [ -L "$entry" ] || continue
+  has_name "$(basename "$entry")" && continue
+  is_managed_vendor_link "$(readlink "$entry")" || continue
+  rm "$entry"
+  printf 'removed stale vendor link: %s\n' "$(basename "$entry")"
+done
+printf 'synced: %s vendor skills\n' "${#names[@]}"

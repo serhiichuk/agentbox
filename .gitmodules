@@ -1,0 +1,4 @@
+[submodule "vendor/rro-maryta"]
+	path = vendor/rro-maryta
+	url = git@gitlab-work:rro.maryta/dev/claude-plugins.git
+	ignore = untracked

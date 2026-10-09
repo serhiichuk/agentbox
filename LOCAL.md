@@ -10,7 +10,8 @@ This repo is upstream pstack from [`cursor/plugins`](https://github.com/cursor/p
 ## Local files
 
 - `global/AGENTS.md` sets the push and merge policy, runs pstack's delegation through Orca, and imports the models file `~/.agents/pstack-models.md`. `bin/sync-agents --apply` links it as each harness's global instructions.
-- `bin/sync-skills` links `skills/*` into each harness.
+- `bin/sync-skills` links `skills/*` into each harness. It is a copy of the script in the agents repo.
+- `vendor/rro-maryta` is a submodule with the Checkbox skills (`redmine`, `sentry`, `gitlab-mr`, and others). `bin/sync-vendors`, also a copy from the agents repo, updates it and links each of its skills into `skills/`.
 - `bin/sync-agents` renders `agents/*.md` per harness with models from `agents/models.json`, and links `global/AGENTS.md`. It derives a role's name from its file name and its model class from the `roles` map in `models.json`, so upstream's role files stay unedited.
 - `agents/models.json` mirrors the classes and aliases in the agents repo.
 - `skills/deslop/` is Cursor's `deslop` skill from `cursor-team-kit`, copied verbatim (see `UPSTREAM`). pstack invokes it by name.
@@ -38,6 +39,7 @@ It keeps a sparse clone of cursor/plugins in `~/.cache/pstack-upstream`. After `
 On the target machine, from a clone of this repo:
 
 ```sh
+git submodule update --init
 bin/sync-skills          # interactive
 bin/sync-agents          # dry run
 bin/sync-agents --apply
