@@ -2,3 +2,8 @@
 	path = vendor/rro-maryta
 	url = git@gitlab-work:rro.maryta/dev/claude-plugins.git
 	ignore = untracked
+[submodule "vendor/agent-browser"]
+	path = vendor/agent-browser
+	url = https://github.com/vercel-labs/agent-browser.git
+	ignore = untracked
+	skills = skills

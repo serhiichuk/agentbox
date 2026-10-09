@@ -6,7 +6,8 @@ usage() {
 Usage: sync-vendors
 
 Fetch and update all vendor submodules, then link every tracked SKILL.md directory
-into ./skills. Name conflicts abort before any catalog changes. Local skills and
+into ./skills. A `skills = <dir>` key on a submodule in .gitmodules limits discovery
+to that directory. Name conflicts abort before any catalog changes. Local skills and
 foreign links are preserved; moved vendor links are repaired and stale ones removed.
 EOF
 }
@@ -97,7 +98,9 @@ while IFS= read -r module; do
   vendor_path=${module#* }
   case "$vendor_path" in vendor/*) ;; *) continue ;; esac
   vendor_dir=$REPO_ROOT/$vendor_path
-  files=$(git -C "$vendor_dir" -c core.quotePath=false ls-files 'SKILL.md' '*/SKILL.md')
+  module_key=${module%% *}
+  skills_root=$(git -C "$REPO_ROOT" config --file .gitmodules --get "${module_key%.path}.skills" || true)
+  files=$(git -C "$vendor_dir" -c core.quotePath=false ls-files "${skills_root:+$skills_root/}SKILL.md" "${skills_root:+$skills_root/}*/SKILL.md")
   while IFS= read -r file; do
     [ -n "$file" ] || continue
     path=${file%SKILL.md}
