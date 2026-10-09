@@ -9,11 +9,10 @@ This repo is upstream pstack from [`cursor/plugins`](https://github.com/cursor/p
 
 ## Local files
 
-- `global/AGENTS.md` sets the push and merge policy, runs pstack's delegation through Orca, and imports the models file `~/.agents/pstack-models.md`. `bin/sync-agents --apply` links it as each harness's global instructions.
+- `global/AGENTS.md` sets the push and merge policy, runs pstack's delegation through Orca, and lists the model aliases that `/setup-pstack` chooses from. `bin/sync-agents --apply` links it as each harness's global instructions.
 - `bin/sync-skills` links `skills/*` into each harness. It is a copy of the script in the agents repo.
 - `vendor/rro-maryta` is a submodule with the Checkbox skills (`redmine`, `sentry`, `gitlab-mr`, and others). `bin/sync-vendors`, also a copy from the agents repo, updates it and links each of its skills into `skills/`.
-- `bin/sync-agents` renders `agents/*.md` per harness with models from `agents/models.json`, and links `global/AGENTS.md`. It derives a role's name from its file name and its model class from the `roles` map in `models.json`, so upstream's role files stay unedited.
-- `agents/models.json` mirrors the classes and aliases in the agents repo.
+- `bin/sync-agents` renders `agents/*.md` per harness and links `global/AGENTS.md`. It derives a role's name from its file name, so upstream's role files stay unedited. A role runs on the parent's model.
 - `skills/deslop/` is Cursor's `deslop` skill from `cursor-team-kit`, copied verbatim (see `UPSTREAM`). pstack invokes it by name.
 
 ## Patches to upstream files
@@ -45,4 +44,6 @@ bin/sync-agents          # dry run
 bin/sync-agents --apply
 ```
 
-Put the models file at `~/.agents/pstack-models.md`: upstream's role lines with alias values, plus an `## aliases` block with one start command per alias. Link it at the path the skills name: `mkdir -p ~/.cursor/rules && ln -s ~/.agents/pstack-models.md ~/.cursor/rules/pstack-models.mdc`. Claude Code and omp read it through the import in `global/AGENTS.md`. agy does not expand the import and reads the file when a skill names it. Do not run `/setup-pstack`: it overwrites the file with Cursor model names.
+Then, in a Claude Code, omp, or agy session, run `/setup-pstack`. It writes the role lines to `~/.cursor/rules/pstack-models.mdc`, with the aliases from `global/AGENTS.md` as values. When the alias table in `global/AGENTS.md` changes, run `/setup-pstack` again.
+
+omp uses its own default models. `sync-agents` does not set `modelRoles` or `task.agentModelOverrides`.

@@ -18,18 +18,33 @@ This machine runs Claude Code, omp, and agy, usually inside Orca. The pstack ski
 
 ## Models
 
-@~/.agents/pstack-models.md
+`/setup-pstack` writes the role lines to `~/.cursor/rules/pstack-models.mdc`. That file is "the `pstack-models.mdc` rule" that the skills name. When a skill names a role, read the file.
 
-The models file is `~/.agents/pstack-models.md`. `~/.cursor/rules/pstack-models.mdc`, the path the skills name, links to it. If its role lines are not in your context, read it whenever a skill names a role.
+The aliases below are the only models that pstack uses. Use another model, such as agy's Claude models, only when the human names it.
 
-- A role value names who runs the role. Each harness is one model family: `claude` is Anthropic, `omp` is OpenAI, `agy` is Google.
-  - `self` is your own harness, `others` is the two other harnesses, and `all` is all three. `strong` picks each harness's strong alias from `## families`.
-  - `cheap` is `haiku` or `gemini`, whichever is not your own harness. In omp, `cheap` is `haiku`.
-  - An alias name, such as `opus`, runs that alias.
-- `self strong` and `inherit-parent` run on the harness's own subagent tool, on the parent's model.
-- Start every other alias with its command from the file's `## aliases` block, in the worker's Orca terminal.
-- A review or a test of your own work always runs on `others strong`.
-- If the file or the role line is missing, use `self strong` for code and `others strong` for review. Say so.
+| Alias | Harness | Family | Start command | Groups |
+|---|---|---|---|---|
+| opus | claude | Anthropic | `claude --model opus --effort high` | hardest, reviewer |
+| astra | omp | OpenAI | `omp --model gpt-6-astra --thinking medium` | hardest (expensive) |
+| sol | omp | OpenAI | `omp --model gpt-6.1-sol --thinking high` | worker, reviewer, tester |
+| sonnet | claude | Anthropic | `claude --model sonnet --effort high` | worker, tester |
+| gemini | agy | Google | `agy --model gemini-3.8-flash-high` | worker, reviewer, tester |
+| haiku | claude | Anthropic | `claude --model haiku --effort xhigh` | fast worker |
+| luna | omp | OpenAI | `omp --model gpt-6-luna --thinking medium` | fast worker |
+
+`/setup-pstack` maps the groups to pstack's roles:
+
+- **hardest:** `hardest tasks`, `judgment and prose`, `how explainer`, `why synthesizer`, `reflect judgment, divergent, synthesizer`.
+- **worker:** `feature, refactoring`, `bug-fix`, `perf-issue`, `hillclimb`, `arena runners`, `architect runners`.
+- **reviewer:** `interrogate reviewers`, `arena cross-judge pool`.
+- **fast worker:** `how explorer`, `why investigators`, `reflect tooling`, `swarm workers`.
+- **tester:** pstack has no tester role. The family rule below chooses the tester.
+
+- In `/setup-pstack`, the detected models are the aliases above, plus `inherit-parent` and `auto`. An alias has a fixed effort, so the budget changes no alias. Record only the budget label.
+- `inherit-parent` and `auto` run on your harness's own subagent tool, on the parent's model.
+- If an alias is on your own harness and your subagent tool can select its model, use the subagent tool. Otherwise, start an Orca worker with the alias's start command.
+- A review of your own work runs on a model from another family. A test of your own work also runs on a model from another family. The harness does not matter. If a role line names only your own family, replace one entry with an alias from another family, and say so.
+- If the file or the role line is missing, use `inherit-parent` for the role, and say so. The review and test rule above still applies.
 
 ## Communication Style (ASD-STE100)
 

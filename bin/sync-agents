@@ -1,36 +1,30 @@
 #!/usr/bin/env bash
 
-# Apply agents/models.json, the role files in agents/*.md, and the optional
-# global/AGENTS.md to every installed harness. Bash 3.2-compatible.
+# Apply the role files in agents/*.md and the optional global/AGENTS.md to
+# every installed harness. Bash 3.2-compatible.
 
 set -u -o pipefail
 
 APPLY=0
 changes=0
-errors=0
-backed_up=0
 roles=' '
 TMP_DIR=
 
 usage() {
   cat <<'EOF'
 Usage: sync-agents [--apply]
-       sync-agents --resolve <claude|omp|agy> <role>
 
-Reconcile agents/models.json, the role files in agents/*.md, and the optional
-global/AGENTS.md with each installed harness. The default is a dry run that prints every change.
---resolve prints the model ID a harness runs for a role and changes nothing.
+Reconcile the role files in agents/*.md and the optional global/AGENTS.md with
+each installed harness. The default is a dry run that prints every change.
 
-  omp     modelRoles and task.agentModelOverrides through `omp config set`,
-          after a backup of config.yml; rendered role files linked into ~/.omp/agent/agents/
+  omp     rendered role files linked into ~/.omp/agent/agents/
   claude  rendered role files linked into ~/.claude/agents/
   agy     rendered role files linked into ~/.gemini/config/agents/<name>/agent.md
   global  global/AGENTS.md, when present, linked to ~/.claude/CLAUDE.md,
           ~/.omp/agent/AGENTS.md, and ~/.gemini/config/AGENTS.md
 
-A role's name is its file name. Its class is a `model: "@<class>"` frontmatter
-line, else its entry in the roles map of models.json, else default. Upstream
-role files stay unedited this way.
+A role's name is its file name, so upstream role files stay unedited. A role
+runs on the parent's model.
 
 Only symlinks that point into this repo are replaced or removed.
 EOF
@@ -41,7 +35,6 @@ init_paths() {
   script_dir=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)
   REPO_ROOT=${SYNC_AGENTS_REPO_ROOT:-$(cd "$script_dir/.." && pwd)}
   AGENTS_DIR=$REPO_ROOT/agents
-  MODELS=$AGENTS_DIR/models.json
   BUILD_DIR=$AGENTS_DIR/.build
   GLOBAL=$REPO_ROOT/global/AGENTS.md
   GLOBAL_HOME=${SYNC_AGENTS_HOME:-$HOME}
@@ -58,11 +51,6 @@ report() {
 change() {
   changes=$((changes + 1))
   report "$@"
-}
-
-error() {
-  errors=$((errors + 1))
-  printf 'error: %s\n' "$1" >&2
 }
 
 has_omp() { command -v "$OMP" >/dev/null 2>&1; }
@@ -94,30 +82,6 @@ body() {
   awk 'n >= 2 { print; next } $0 == "---" { n++ }' "$1"
 }
 
-role_class() {
-  local model
-  model=$(frontmatter_value "$1" model)
-  case $model in
-    @*) printf '%s\n' "${model#@}" ;;
-    *) jq -r --arg r "$(basename "$1" .md)" '.roles[$r] // "default"' "$MODELS" ;;
-  esac
-}
-
-resolve_model() {
-  jq -r --arg h "$1" --arg a "$2" --arg c "$3" \
-    '.agents[$a][$h] // .classes[$c][$h] // "inherit"' "$MODELS"
-}
-
-agy_tier() {
-  # ponytail: tier guessed from the model ID; give agy an explicit pro/flash value in models.json if a model name stops saying which it is
-  case $1 in
-    pro | flash | inherit) printf '%s\n' "$1" ;;
-    *pro*) printf 'pro\n' ;;
-    *flash*) printf 'flash\n' ;;
-    *) printf 'inherit\n' ;;
-  esac
-}
-
 ensure_link() {
   local harness=$1 dest=$2 target=$3 current
   if [ -L "$dest" ]; then
@@ -147,15 +111,14 @@ write_rendered() {
 }
 
 sync_role() {
-  local file=$1 name=$2 class=$3 description model rendered build
+  local file=$1 name=$2 description rendered build
   description=$(frontmatter_value "$file" description)
 
   if has_omp; then
-    model=$(resolve_model omp "$name" "$class")
     rendered=$TMP_DIR/omp-$name.md
     build=$BUILD_DIR/omp/$name.md
     {
-      printf -- '---\nname: %s\ndescription: %s\nmodel: "%s"\n---\n' "$name" "$description" "$model"
+      printf -- '---\nname: %s\ndescription: %s\n---\n' "$name" "$description"
       body "$file"
     } >"$rendered"
     write_rendered omp "$rendered" "$build"
@@ -163,11 +126,10 @@ sync_role() {
   fi
 
   if has_claude; then
-    model=$(resolve_model claude "$name" "$class")
     rendered=$TMP_DIR/claude-$name.md
     build=$BUILD_DIR/claude/$name.md
     {
-      printf -- '---\nname: %s\ndescription: %s\nmodel: %s\n---\n' "$name" "$description" "$model"
+      printf -- '---\nname: %s\ndescription: %s\n---\n' "$name" "$description"
       body "$file"
     } >"$rendered"
     write_rendered claude "$rendered" "$build"
@@ -175,12 +137,11 @@ sync_role() {
   fi
 
   if has_agy; then
-    model=$(agy_tier "$(resolve_model agy "$name" "$class")")
     rendered=$TMP_DIR/agy-$name.md
     build=$BUILD_DIR/agy/$name/agent.md
     {
-      printf -- '---\nname: %s\ndescription: %s\nmodel: %s\n---\n\n# Agent System Instructions\n' \
-        "$name" "$description" "$model"
+      printf -- '---\nname: %s\ndescription: %s\nmodel: inherit\n---\n\n# Agent System Instructions\n' \
+        "$name" "$description"
       body "$file"
     } >"$rendered"
     write_rendered agy "$rendered" "$build"
@@ -221,35 +182,6 @@ remove_stale() {
   return 0
 }
 
-backup_omp_config() {
-  local dir
-  [ "$backed_up" -eq 1 ] && return 0
-  dir=$("$OMP" config path) || return 1
-  cp -p "$dir/config.yml" "$dir/config.yml.sync-agents.$(date +%Y%m%d%H%M%S).bak" || return 1
-  report omp backup "$dir/config.yml"
-  backed_up=1
-}
-
-sync_omp_key() {
-  local key=$1 section=$2 want have
-  want=$(jq -cS --arg s "$section" '.[$s] // {} | with_entries(select(.value.omp) | .value = .value.omp)' "$MODELS")
-  if ! have=$("$OMP" config get "$key" --json | jq -cS '.value // {}'); then
-    error "cannot read omp setting $key"
-    return
-  fi
-  [ "$want" = "$have" ] && return
-  change omp set "$key"
-  jq -rn --argjson old "$have" --argjson new "$want" \
-    '(($old + $new) | keys[]) as $k | select($old[$k] != $new[$k])
-     | "                 \($k): \($old[$k] // "-") -> \($new[$k] // "-")"'
-  [ "$APPLY" -eq 1 ] || return
-  if ! backup_omp_config; then
-    error "cannot back up omp config.yml; $key left unchanged"
-    return
-  fi
-  "$OMP" config set "$key" "$want" >/dev/null || error "omp config set $key failed"
-}
-
 sync_global() {
   local dest
   [ -f "$GLOBAL" ] || return 0
@@ -260,27 +192,11 @@ sync_global() {
   done
 }
 
-resolve_role() {
-  local harness=$1 role=$2 file model
-  file=$AGENTS_DIR/$role.md
-  [ -f "$file" ] || { error "no role file $file"; return 1; }
-  model=$(jq -r --arg h "$harness" --arg a "$role" --arg c "$(role_class "$file")" \
-    '.agents[$a][$h] // .classes[$c][$h] // empty' "$MODELS")
-  [ -n "$model" ] || { error "models.json has no $harness model for $role"; return 1; }
-  printf '%s\n' "$model"
-}
-
 main() {
-  local file name class
+  local file name
   case ${1:-} in
     '') ;;
     --apply) APPLY=1 ;;
-    --resolve)
-      [ $# -eq 3 ] || { usage >&2; return 2; }
-      init_paths
-      resolve_role "$2" "$3"
-      return
-      ;;
     -h | --help)
       usage
       return 0
@@ -292,36 +208,24 @@ main() {
   esac
 
   init_paths
-  command -v jq >/dev/null 2>&1 || { error "jq is required"; return 1; }
-  jq empty "$MODELS" 2>/dev/null || { error "invalid or missing $MODELS"; return 1; }
   TMP_DIR=$(mktemp -d) || return 1
   trap 'rm -rf "$TMP_DIR"' EXIT
 
   for file in "$AGENTS_DIR"/*.md; do
     [ -f "$file" ] || continue
     name=$(basename "$file" .md)
-    class=$(role_class "$file")
     roles="$roles$name "
-    if ! jq -e --arg c "$class" '.classes[$c]' "$MODELS" >/dev/null; then
-      error "$file: class '$class' is not in models.json"
-    else
-      sync_role "$file" "$name" "$class"
-    fi
+    sync_role "$file" "$name"
   done
 
   remove_stale
   sync_global
-  if has_omp; then
-    sync_omp_key modelRoles classes
-    sync_omp_key task.agentModelOverrides agents
-  fi
 
   if [ "$APPLY" -eq 1 ]; then
     printf 'applied %d change(s)\n' "$changes"
   else
     printf 'dry run: %d change(s); rerun with --apply\n' "$changes"
   fi
-  [ "$errors" -eq 0 ]
 }
 
 main "$@"
