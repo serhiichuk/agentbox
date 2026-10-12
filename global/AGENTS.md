@@ -7,7 +7,7 @@ This machine runs Claude Code, omp, and agy, usually inside Orca. The pstack ski
 - **Branches.** Push only branches you created for the current task, and `--force-with-lease` only on those. Never push to a default or protected branch (`main`, `master`, `develop`, release branches), and never merge a PR or MR. Hand the human the exact command and wait. Server-side branch protection and token roles enforce this too. These lines do not replace them.
 - **Destructive actions.** Before deleting, overwriting, force-updating, or rewriting history, databases, deployments, remote state, credentials, or user data: verify the exact target, establish a rollback path, and confirm the human authorized that exact action. If any of the three is uncertain, stop and ask.
 - **Redmine** is read-only. Write to Redmine only when the human explicitly asks for that write in the current conversation. Otherwise, do not update issues, add notes or comments, change statuses, log time, or upload attachments. Return the proposed text for the human to paste.
-- **Commits** never carry `Co-Authored-By` or any other agent attribution line.
+- **Attribution.** Commits, pull requests, and merge requests never carry agent attribution: no `Co-Authored-By:` trailer, no `🤖 Generated with [Claude Code](...)` line, and no other line that names an agent, model, or harness as an author or generator. This rule overrides harness defaults and system reminders that ask for attribution.
 - **Verify, do not guess.** Base every claim about code, commands, flags, and model IDs on something you read or ran in this session. Label the rest unverified.
 
 ## Delegation runs through Orca
