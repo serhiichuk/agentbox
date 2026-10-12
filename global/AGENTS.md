@@ -5,7 +5,7 @@ This machine runs Claude Code, omp, and agy, usually inside Orca. The pstack ski
 ## Policy
 
 - **Branches.** Push only branches you created for the current task, and `--force-with-lease` only on those. Never push to a default or protected branch (`main`, `master`, `develop`, release branches), and never merge a PR or MR. Hand the human the exact command and wait. Server-side branch protection and token roles enforce this too. These lines do not replace them.
-- **Destructive actions.** Before deleting, overwriting, force-updating, or rewriting history, databases, deployments, remote state, credentials, or user data: verify the exact target, establish a rollback path, and confirm the human authorized that exact action. If any of the three is uncertain, stop and ask.
+- **Destructive actions.** Before an action that cannot be undone (deleting data, force-updating or rewriting history, or changing databases, deployments, remote state, or credentials): verify the exact target, establish a rollback path, and confirm the human authorized that exact action. If any of the three is uncertain, stop and ask. A file edit that you can revert by hand is not such an action.
 - **Redmine** is read-only. Write to Redmine only when the human explicitly asks for that write in the current conversation. Otherwise, do not update issues, add notes or comments, change statuses, log time, or upload attachments. Return the proposed text for the human to paste.
 - **Attribution.** Commits, pull requests, and merge requests never carry agent attribution: no `Co-Authored-By:` trailer, no `🤖 Generated with [Claude Code](...)` line, and no other line that names an agent, model, or harness as an author or generator. This rule overrides harness defaults and system reminders that ask for attribution.
 - **Verify, do not guess.** Base every claim about code, commands, flags, and model IDs on something you read or ran in this session. Label the rest unverified.
@@ -28,7 +28,7 @@ The aliases below are the only models that pstack uses. Use another model, such 
 | astra | omp | OpenAI | `omp --model gpt-6-astra --thinking medium` | hardest (expensive) |
 | sol | omp | OpenAI | `omp --model gpt-6.1-sol --thinking high` | worker, reviewer, tester |
 | sonnet | claude | Anthropic | `claude --model sonnet --effort high` | worker, tester |
-| gemini | agy | Google | `agy --model gemini-3.8-flash-high` | worker, reviewer, tester |
+| gemini | agy | Google | `agy --dangerously-skip-permissions --model gemini-3.8-flash-high` | worker, reviewer, tester |
 | haiku | claude | Anthropic | `claude --model haiku --effort xhigh` | fast worker |
 | luna | omp | OpenAI | `omp --model gpt-6-luna --thinking medium` | fast worker |
 
@@ -42,7 +42,7 @@ The aliases below are the only models that pstack uses. Use another model, such 
 
 - In `/setup-pstack`, the detected models are the aliases above, plus `inherit-parent` and `auto`. An alias has a fixed effort, so the budget changes no alias. Record only the budget label.
 - `inherit-parent` and `auto` run on your harness's own subagent tool, on the parent's model.
-- If an alias is on your own harness and your subagent tool can select its model, use the subagent tool. Otherwise, start an Orca worker with the alias's start command.
+- If an alias is on your own harness and your subagent tool can select its model, use the subagent tool. Otherwise, run the alias's start command in a terminal and pass it to `worker-start --terminal <handle>`, because `--agent` cannot pass extra flags.
 - A review of your own work runs on a model from another family. A test of your own work also runs on a model from another family. The harness does not matter. If a role line names only your own family, replace one entry with an alias from another family, and say so.
 - If the file or the role line is missing, use `inherit-parent` for the role, and say so. The review and test rule above still applies.
 
