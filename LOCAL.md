@@ -19,7 +19,6 @@ This repo is upstream pstack from [`cursor/plugins`](https://github.com/cursor/p
 ## Patches to upstream files
 
 - `skills/make-bot-ui/` is deleted. It drives Cursor-hosted bot routines.
-- `skills/poteto-mode/SKILL.md`: `name: poteto-mode`, the directory name, in place of `Poteto Mode`.
 - `.gitignore`: `agents/.build/`, the output of `bin/sync-agents`.
 
 Keep this list short. Fix a Cursor-ism in `global/AGENTS.md` unless only code can fix it.
