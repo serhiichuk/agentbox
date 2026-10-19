@@ -7,3 +7,8 @@
 	url = https://github.com/vercel-labs/agent-browser.git
 	ignore = untracked
 	skills = skills
+[submodule "vendor/vuejs-ai"]
+	path = vendor/vuejs-ai
+	url = https://github.com/vuejs-ai/skills.git
+	ignore = untracked
+	skills = skills

@@ -13,6 +13,7 @@ This repo is upstream pstack from [`cursor/plugins`](https://github.com/cursor/p
 - `bin/sync-skills` links `skills/*` into each harness. It is a copy of the script in the agents repo.
 - `vendor/rro-maryta` is a submodule with the Checkbox skills (`redmine`, `sentry`, `gitlab-mr`, and others). `bin/sync-vendors`, also a copy from the agents repo, updates it and links each of its skills into `skills/`.
 - `vendor/agent-browser` is a submodule with the `agent-browser` stub skill, which loads its guide from the installed CLI. Its `skills = skills` key in `.gitmodules` keeps `bin/sync-vendors` from linking the CLI-served `skill-data/` skills.
+- `vendor/vuejs-ai` is a submodule with the Vue 3 skills (`vue-best-practices` and seven more). Its `skills = skills` key in `.gitmodules` is required for discovery: upstream keeps each skill one directory down, under `skills/`.
 - `bin/sync-agents` renders `agents/*.md` per harness and links `global/AGENTS.md`. It derives a role's name from its file name, so upstream's role files stay unedited. A role runs on the parent's model.
 - `skills/deslop/`, `skills/control-ui/`, and `skills/control-cli/` are Cursor's skills from `cursor-team-kit`, copied verbatim (see `UPSTREAM`). pstack invokes them by name.
 
