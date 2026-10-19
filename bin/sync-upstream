@@ -15,7 +15,7 @@ and Cursor terms in added lines that global/AGENTS.md may need to map.
 
   --diff   also print the full diff
   --apply  vendor <ref> onto the upstream branch, merge it into main,
-           refresh skills/deslop, and pin UPSTREAM to it
+           refresh the cursor-team-kit skills, and pin UPSTREAM to it
 EOF
 }
 
@@ -26,7 +26,8 @@ die() {
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 CACHE=${PSTACK_UPSTREAM_CACHE:-$HOME/.cache/pstack-upstream}
-PATHS=(pstack cursor-team-kit/skills/deslop
+TEAM_KIT=(deslop control-ui control-cli)
+PATHS=(pstack "${TEAM_KIT[@]/#/cursor-team-kit/skills/}"
   ':!pstack/.cursor-plugin' ':!pstack/assets' ':!pstack/docs')
 CURSOR_TERMS='Task|subagent_type|generalPurpose|cloud|origin pr|cursor-team-kit|control-(ui|cli)|AskQuestion|/loop|create-skill|\.cursor/|pstack-models'
 
@@ -43,8 +44,8 @@ done
 
 if [ ! -d "$CACHE/.git" ]; then
   git clone -q --filter=blob:none --no-checkout https://github.com/cursor/plugins "$CACHE"
-  git -C "$CACHE" sparse-checkout set pstack cursor-team-kit/skills/deslop
 fi
+git -C "$CACHE" sparse-checkout set pstack "${TEAM_KIT[@]/#/cursor-team-kit/skills/}"
 git -C "$CACHE" fetch -q origin "$ref"
 pin=$(awk '/^commit:/ { print $2; exit }' "$REPO/UPSTREAM")
 new=$(git -C "$CACHE" rev-parse FETCH_HEAD)
@@ -83,13 +84,16 @@ git -C "$REPO" worktree add -q "$tmp/upstream" upstream
 rsync -a --delete --exclude .git --exclude .cursor-plugin --exclude assets --exclude docs \
   "$CACHE/pstack/" "$tmp/upstream/"
 git -C "$tmp/upstream" add -A
-# Unchanged on a deslop-only update, or on a retry after a later step failed.
+# Unchanged on a cursor-team-kit-only update, or on a retry after a later step failed.
 git -C "$tmp/upstream" diff --cached --quiet ||
   git -C "$tmp/upstream" commit -q -m "chore: vendor upstream pstack from cursor/plugins@${new:0:8}"
 
 git -C "$REPO" merge -q --no-edit upstream ||
-  die "merge conflict: resolve and commit, then copy skills/deslop and bump UPSTREAM by hand"
-cp "$CACHE/cursor-team-kit/skills/deslop/SKILL.md" "$REPO/skills/deslop/SKILL.md"
+  die "merge conflict: resolve and commit, then copy the cursor-team-kit skills and bump UPSTREAM by hand"
+for skill in "${TEAM_KIT[@]}"; do
+  mkdir -p "$REPO/skills/$skill"
+  cp "$CACHE/cursor-team-kit/skills/$skill/SKILL.md" "$REPO/skills/$skill/SKILL.md"
+done
 sed -i.bak "s/^commit: .*/commit: $new/" "$REPO/UPSTREAM" && rm "$REPO/UPSTREAM.bak"
 git -C "$REPO" commit -q -am "chore: pin upstream at cursor/plugins@${new:0:8}"
 git -C "$REPO" log --oneline -3
