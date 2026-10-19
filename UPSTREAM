@@ -1,11 +1,11 @@
 repository: https://github.com/cursor/plugins
 path: pstack/
-commit: 997ffc7fe26bdaa6478a14e7f5b8d5f9ed747102
+commit: d457567332aa6989e753ea289f30ea2bfbc80bc0
 license: MIT (see LICENSE)
 not copied: .cursor-plugin/, assets/, docs/
 
 repository: https://github.com/cursor/plugins
 path: cursor-team-kit/skills/deslop/
-commit: 997ffc7fe26bdaa6478a14e7f5b8d5f9ed747102
+commit: d457567332aa6989e753ea289f30ea2bfbc80bc0
 license: MIT (see skills/deslop/LICENSE)
 copied to: skills/deslop/
