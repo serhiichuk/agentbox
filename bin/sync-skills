@@ -118,7 +118,7 @@ init_sections() {
   section_dirs=()
   add_harness_section agents '.agents/skills' "$agents_config" "$AGENTS_SKILLS_DIR"
   add_harness_section claude '.claude/skills' "$claude_config" "$CLAUDE_SKILLS_DIR"
-  add_harness_section gemini '.gemini/skills' "$HOME/.gemini" "$HOME/.gemini/skills"
+  add_harness_section gemini '.gemini/config/skills' "$HOME/.gemini" "$HOME/.gemini/config/skills"
   add_harness_section opencode '.opencode/skills' "$HOME/.opencode" "$HOME/.opencode/skills"
   add_harness_section pi '.pi/skills' "$HOME/.pi" "$HOME/.pi/skills"
   add_harness_section omp '.omp/skills' "$HOME/.omp" "$HOME/.omp/skills"
