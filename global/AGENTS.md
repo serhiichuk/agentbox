@@ -12,13 +12,13 @@ This machine runs Claude Code, omp, and agy, usually inside Orca. The pstack ski
 
 ## Delegation runs through Orca
 
-- A pstack `Task` call or cloud agent runs as an Orca worker (the `orchestration` skill). Outside Orca, use the harness's own subagent tool.
-- Keep pstack's placement. A worker shares the coordinator's worktree (`worker-start --terminal <handle> --worktree current`), unless the skill gives it its own worktree or branch. A cloud agent gets its own Orca worktree.
+- A pstack `Task` call runs as an Orca worker (the `orchestration` skill), except where Models sends it to your own subagent tool. Outside Orca, use your own subagent tool.
+- Keep pstack's placement. A worker shares the coordinator's worktree (`worker-start --terminal <handle> --worktree current`), unless the skill gives it its own worktree or branch. A Cursor cloud agent or cloud VM gets its own Orca worktree.
 - An Orca worker asks the human with the orchestration `ask` command from its preamble, not `AskQuestion`. Nobody watches a worker's pane.
 
 ## Harnesses
 
-pstack names Cursor tools, paths, and features. Replace each one with the equivalent in your harness: Claude Code (`claude`), omp, or agy. Your own tool list gives the tool names. For CLI flags, run `<harness> --help` once per session.
+Replace each Cursor tool, path, and feature in pstack with its equivalent in your harness: Claude Code (`claude`), omp, or agy. For CLI flags, run `<harness> --help` once per session.
 
 One Cursor path can map to several harness paths. For the current session, read your own harness. For earlier work (`recall`, `automate-me`, `session-pickup`), read all three harnesses, newest first, unless the task names one.
 
@@ -37,17 +37,20 @@ One Cursor path can map to several harness paths. For the current session, read 
 
 **Tools and fields:**
 
-- `Task` outside Orca: `Agent` in Claude Code, `task` in omp, and `invoke_subagent` in agy. `generalPurpose` is the default agent: `general-purpose` in Claude Code, `task` in omp, and `self` in agy.
+| Cursor | Claude Code | omp | agy |
+|---|---|---|---|
+| `Task` (outside Orca) | `Agent` | `task` | `invoke_subagent` |
+| `generalPurpose` | `general-purpose` | `task` | `self` |
+| `AskQuestion` | `AskUserQuestion` | `ask` | `ask_question` |
+| todo list | `TodoWrite` | `todo` | none |
+
 - `readonly: true`: the brief says "do not edit files". After the worker stops, check `git status`.
-- `AskQuestion`: `AskUserQuestion` in Claude Code, `ask` in omp. If there is no such tool, ask in plain text.
-- The todo list: `TodoWrite` or the task tools in Claude Code, `todo` in omp. If there is no such tool, keep the list in your reply.
 - `run_in_background`: omit it. `resume`: start a new worker with the earlier result in its brief. `file_attachments`: list the paths in the brief.
 
 **Cursor-only features:**
 
 - **Forge.** The repos are on GitLab, and `glab` is configured. A PR is a merge request (MR). Where a skill uses `gh`, `origin pr`, or the built-in PR tool, use `glab mr` and `glab ci`. `scripts/watch-pr` reads only GitHub, so poll `glab mr view` and `glab ci status` instead. Use `gh` only for a GitHub remote.
 - **Bugbot.** Run one review of the MR diff on a reviewer alias from another family (see Models). Triage its findings with `bugbot-triage.md`.
-- **Cursor cloud agent or cloud VM.** Use an Orca worktree (see Delegation).
 - **`/loop` and Cursor Automations.** Use `orca automations create`. In Claude Code, the `/loop` skill also works.
 - **Other features with no equivalent** (Custom Modes, `/create-skill`): skip only that step. Write `Skipped: <step>. <reason>.`, and continue.
 
@@ -86,9 +89,9 @@ The aliases below are the only models that pstack uses. Use another model, such 
 - `poteto-mode` starts from the role line's effort and changes it for each spawn. Set the effort with `claude --effort <level>`, `omp --thinking <level>`, or the agy slug `gemini-3.8-flash-<low|medium|high>`.
 - Never use fast mode: no `-fast` slug and no fast or priority speed setting. If a skill asks for fast mode, use standard speed.
 - `inherit-parent` and `auto` run on your harness's own subagent tool, on the parent's model.
-- If an alias is on your own harness and your subagent tool can select its model, use the subagent tool. Otherwise, run the alias's start command in a terminal and pass it to `worker-start --terminal <handle>`, because `--agent` cannot pass extra flags.
+- If an alias is on your own harness and your subagent tool can select its model, use the subagent tool. Otherwise, run the alias's start command in a terminal and pass it to `worker-start --terminal <handle>`, because `--agent` cannot pass the other flags of a start command, such as omp's `--thinking` or agy's `--dangerously-skip-permissions`.
 - A review of your own work runs on a model from another family. A test of your own work also runs on a model from another family. The harness does not matter. If a role line names only your own family, replace one entry with an alias from another family, and say so.
-- If the file or the role line is missing, use `inherit-parent` for the role, and say so. The review and test rule above still applies.
+- If the file or the role line is missing, use `inherit-parent` for the role, and say so.
 
 ## Communication Style (ASD-STE100)
 
