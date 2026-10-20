@@ -1,6 +1,6 @@
 # Agent instructions
 
-This machine runs Claude Code, omp, and agy, usually inside Orca. The pstack skills are installed verbatim from upstream, which was written for Cursor. Follow them as written, with the substitutions below. Where a pstack skill conflicts with this file, this file wins.
+This machine runs Claude Code, omp, agy, and opencode, usually inside Orca. The pstack skills are installed verbatim from upstream, which was written for Cursor. Follow them as written, with the substitutions below. Where a pstack skill conflicts with this file, this file wins.
 
 ## Policy
 
@@ -74,6 +74,7 @@ The aliases below are the only models that pstack uses. Use another model, such 
 | sol | omp | OpenAI | `omp --model gpt-6.1-sol` | worker, reviewer, tester |
 | sonnet | claude | Anthropic | `claude --model sonnet` | worker, tester |
 | gemini | agy | Google | `agy --dangerously-skip-permissions --model gemini-3.8-flash-high` | worker, reviewer, tester |
+| deepseek | opencode | DeepSeek | `opencode mini --model opencode/deepseek-v4.1-flash-free` | worker, reviewer, tester |
 | haiku | claude | Anthropic | `claude --model haiku` | cheap worker |
 | luna | omp | OpenAI | `omp --model gpt-6-luna` | cheap worker |
 

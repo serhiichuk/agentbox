@@ -21,7 +21,8 @@ each installed harness. The default is a dry run that prints every change.
   claude  rendered role files linked into ~/.claude/agents/
   agy     rendered role files linked into ~/.gemini/config/agents/<name>/agent.md
   global  global/AGENTS.md, when present, linked to ~/.claude/CLAUDE.md,
-          ~/.omp/agent/AGENTS.md, and ~/.gemini/config/AGENTS.md
+          ~/.omp/agent/AGENTS.md, ~/.gemini/config/AGENTS.md, and
+          ~/.config/opencode/AGENTS.md
 
 A role's name is its file name, so upstream role files stay unedited. A role
 runs on the parent's model.
@@ -186,7 +187,7 @@ sync_global() {
   local dest
   [ -f "$GLOBAL" ] || return 0
   for dest in "$GLOBAL_HOME/.claude/CLAUDE.md" "$GLOBAL_HOME/.omp/agent/AGENTS.md" \
-    "$GLOBAL_HOME/.gemini/config/AGENTS.md"; do
+    "$GLOBAL_HOME/.gemini/config/AGENTS.md" "$GLOBAL_HOME/.config/opencode/AGENTS.md"; do
     [ -d "$(dirname "$dest")" ] || continue
     ensure_link global "$dest" "$GLOBAL"
   done
