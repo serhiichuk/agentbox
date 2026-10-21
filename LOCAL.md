@@ -20,7 +20,7 @@ This repo is upstream pstack from [`cursor/plugins`](https://github.com/cursor/p
 ## Patches to upstream files
 
 - `skills/make-bot-ui/` is deleted. It drives Cursor-hosted bot routines.
-- `.gitignore`: `agents/.build/`, the output of `bin/sync-agents`.
+- `.gitignore`: `agents/.build/`, the output of `bin/sync-agents`, and `tmp/` for local artifacts.
 
 Keep this list short. Fix a Cursor-ism in `global/AGENTS.md` unless only code can fix it.
 
@@ -40,7 +40,7 @@ Mutagen keeps `~/Repos/pstack` on the Mac and `agentbox:~/Repos/pstack` identica
 
 ```sh
 mutagen sync create --name=pstack --mode=two-way-safe \
-  --ignore=.git --ignore=/agents/.build --ignore=.DS_Store --ignore=/plans \
+  --ignore=.git --ignore=/agents/.build --ignore=.DS_Store --ignore=/plans --ignore=/tmp \
   ~/Repos/pstack agentbox:~/Repos/pstack
 mutagen sync list pstack     # expect "Watching for changes" and no conflicts
 ```

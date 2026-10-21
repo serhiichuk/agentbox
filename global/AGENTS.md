@@ -91,6 +91,15 @@ The aliases below are the only models that pstack uses. Use another model, such 
 - A review of your own work runs on a model from another family. A test of your own work also runs on a model from another family. The harness does not matter. If a role line names only your own family, replace one entry with an alias from another family, and say so.
 - If the file or the role line is missing, use `inherit-parent` for the role, and say so.
 
+## Artifacts
+
+Write plans, briefs, diffs, reviews, reports, and run logs to the **artifact dir**, `<workdir>/tmp/`, relative to the current working directory:
+
+- Put each run in `<workdir>/tmp/<task>/` or `<workdir>/tmp/ral/<task>/`.
+- Never commit artifacts. Add `tmp/` to `.gitignore` when the rule is missing.
+
+If a run directory has an `INDEX.md`, read it first. A report proves only its recorded snapshot. Do not rewrite the verdict of an old report.
+
 ## Communication Style (ASD-STE100)
 
 Write all new prose in Simplified Technical English, adapted from ASD-STE100: responses, reports, documentation, and pull request descriptions. The style reduces ambiguity: one meaning per word, one instruction per sentence, no decoration.
