@@ -34,6 +34,19 @@ bin/sync-upstream --apply    # vendor onto `upstream`, merge into main, refresh 
 
 It keeps a sparse clone of cursor/plugins in `~/.cache/pstack-upstream`. After `--apply`, check the reported Cursor terms against the map in `global/AGENTS.md`, then deploy.
 
+## Live sync with agentbox
+
+Mutagen keeps `~/Repos/pstack` on the Mac and `agentbox:~/Repos/pstack` identical in both directions, without a commit. Git runs on the Mac only: `.git` is not synced, so the agentbox `.git` is stale.
+
+```sh
+mutagen sync create --name=pstack --mode=two-way-safe \
+  --ignore=.git --ignore=/agents/.build --ignore=.DS_Store --ignore=/plans \
+  ~/Repos/pstack agentbox:~/Repos/pstack
+mutagen sync list pstack     # expect "Watching for changes" and no conflicts
+```
+
+After a change to `agents/*.md`, run `ssh agentbox ~/Repos/pstack/bin/sync-agents --apply`. If both hosts change one file between syncs, Mutagen keeps both versions and lists a conflict. Resolve it by hand.
+
 ## Deploy
 
 On the target machine, from a clone of this repo:

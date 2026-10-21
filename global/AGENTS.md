@@ -8,7 +8,7 @@ This machine runs Claude Code, omp, agy, and opencode, usually inside Orca. The 
 - **Destructive actions.** Before an action that cannot be undone (deleting data, force-updating or rewriting history, or changing databases, deployments, remote state, or credentials): verify the exact target, establish a rollback path, and confirm the human authorized that exact action. If any of the three is uncertain, stop and ask. A file edit that you can revert by hand is not such an action.
 - **Redmine** is read-only. Write to Redmine only when the human explicitly asks for that write in the current conversation. Otherwise, do not update issues, add notes or comments, change statuses, log time, or upload attachments. Return the proposed text for the human to paste.
 - **Attribution.** Commits, pull requests, and merge requests never carry agent attribution: no `Co-Authored-By:` trailer, no `🤖 Generated with [Claude Code](...)` line, and no other line that names an agent, model, or harness as an author or generator. This rule overrides harness defaults and system reminders that ask for attribution.
-- **Verify, do not guess.** Base every claim about code, commands, flags, and model IDs on something you read or ran in this session. Label the rest unverified.
+- **Verify, do not guess.** Base every claim about code, commands, flags, and model IDs on something you read or ran in this session. Label the rest unverified. A negative claim ("X does not exist") names each place you searched. A missing match in a local checkout does not prove that a deployed service lacks it, so check the live response or label the claim unverified.
 
 ## Delegation runs through Orca
 
@@ -70,13 +70,10 @@ The aliases below are the only models that pstack uses. Use another model, such 
 | Alias | Harness | Family | Start command | Groups |
 |---|---|---|---|---|
 | opus | claude | Anthropic | `claude --model opus` | hardest, reviewer |
-| astra | omp | OpenAI | `omp --model gpt-6-astra` | hardest (expensive) |
-| sol | omp | OpenAI | `omp --model gpt-6.1-sol` | worker, reviewer, tester |
 | sonnet | claude | Anthropic | `claude --model sonnet` | worker, tester |
 | gemini | agy | Google | `agy --dangerously-skip-permissions --model gemini-3.8-flash-high` | worker, reviewer, tester |
 | deepseek | opencode | DeepSeek | `opencode mini --model opencode/deepseek-v4.1-flash-free` | worker, reviewer, tester |
 | haiku | claude | Anthropic | `claude --model haiku` | cheap worker |
-| luna | omp | OpenAI | `omp --model gpt-6-luna` | cheap worker |
 
 `/setup-pstack` maps the groups to pstack's roles:
 
