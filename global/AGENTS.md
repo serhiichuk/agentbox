@@ -31,6 +31,7 @@ One Cursor path can map to several harness paths. For the current session, read 
 **Skills, roles, and plugins:**
 
 - **New project skill** (Cursor: `.cursor/skills/<name>/`): write it to `.agents/skills/<name>/`, which omp and agy read. Then link `.claude/skills/<name>` to `../../.agents/skills/<name>` for Claude Code.
+- **Edit an installed pstack skill** (Cursor: copy from `plugins/cache/` to `.cursor/skills/<skill>/` or `~/.cursor/skills/<skill>/`): the user-level skill folders link into `~/Repos/pstack/skills/`, so never edit them. For a project-level change, copy the skill to `.agents/skills/<skill>/` and edit the copy. For a user-level change, add a rule to `global/AGENTS.md` instead.
 - **Skill search:** `.agents/skills/`, `.claude/skills/`, `.omp/skills/`, `~/.claude/skills/`, `~/.omp/agent/skills/`, and `~/.gemini/config/skills/`.
 - **Roles** (`poteto-agent`, `comment-sicko`): `~/.claude/agents/<role>.md`, `~/.omp/agent/agents/<role>.md`, and `~/.gemini/config/agents/<role>/agent.md`. A subagent tool takes the role name. Tell an Orca worker to read its role file first.
 - **Plugins** (Cursor: `~/.cursor/plugins/`): `~/.claude/plugins/`, `~/.omp/plugins/`, and `agy plugin list`.
